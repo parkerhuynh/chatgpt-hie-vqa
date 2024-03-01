@@ -168,11 +168,11 @@ class QuestionDataset(Dataset):
                 transforms.ToTensor(),
                 normalize,
             ])
-            self.transform = transforms.Compose([
-                transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
-                transforms.ToTensor(),
-                normalize,
-            ])
+            # self.transform = transforms.Compose([
+            #     transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
+            #     transforms.ToTensor(),
+            #     normalize,
+            # ])
         else:
             self.transform = transforms.Compose([
                 transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
