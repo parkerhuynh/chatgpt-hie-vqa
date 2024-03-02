@@ -211,7 +211,7 @@ class QuestionDataset(Dataset):
             self.super_answer_types = json.load(file)
             
         
-        if self.split == "val":
+        if self.split in  ["val", "test"]:
             self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open("./answer_dicts.json", 'r'))
             print(f"{self.split} | Loaded vqa answer vocabulary")
             self.token_to_ix, self.pretrained_emb = pickle.load(open("./question_dicts.pkl", 'rb'))
@@ -234,7 +234,8 @@ class QuestionDataset(Dataset):
                 pickle.dump([self.token_to_ix, self.pretrained_emb ], open("./question_dicts.pkl", 'wb'))
                 print(f"{self.split} | Created question vocabulary")
         self.questions = self.load_questions()
-        self.annotations = self.load_annotations()
+        if self.split in ["train", "val"]:
+            self.annotations = self.load_annotations()
         self.token_size = len(self.token_to_ix)
         self.vqa_output_dim = len(self.vqa_ans_to_idx.keys())
         # random.shuffle(self.annotations)
@@ -242,50 +243,91 @@ class QuestionDataset(Dataset):
     def __len__(self):
         if self.args.debug:
             return 64
-        return len(self.annotations)
+        return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
     def __getitem__(self, idx):
-        ann = self.annotations[idx]
-        que = self.questions[ann["id"]]
-        vqa_answer_str = ann["answer"]
-        vqa_answer_ids = self.vqa_ans_to_idx[vqa_answer_str]
         
-        question_id = ann["id"]
-        question = que["question"]
-        question_type_ids = que["question_type"]
-        question_type_str = que["question_type_str"]
-        question_onehot = torch.from_numpy(que["onehot_features"])
-        original_vqa_answer_str = ann["original_answer"]
-        answer_type_str = self.super_answer_types[original_vqa_answer_str]
-        answer_type_ids = self.question_type_to_idx[answer_type_str]
         
-        encoding = self.bert_tokenizer.encode_plus(
-            question,
-            add_special_tokens=True,
-            max_length=self.args.max_ques_len,
-            return_token_type_ids=False,
-            padding='max_length',
-            truncation=True,
-            return_attention_mask=True,
-            return_tensors='pt',
-        )
-        image = image_preprocessing(que["img_path"], self.transform)
-        example = {
-            'img_path': que["img_path"],
-            'question_id': question_id,
-            'question_text': question,
-            'bert_input_ids': encoding['input_ids'].flatten(),
-            'bert_attention_mask': encoding['attention_mask'].flatten(),
-            'onehot_feature': question_onehot,
-            'question_type_str': question_type_str,
-            'question_type_label': torch.tensor(question_type_ids, dtype=torch.long),
-            'answer_type_str': answer_type_str,
-            'answer_type_label': torch.tensor(answer_type_ids, dtype=torch.long),
-            'vqa_answer_str':vqa_answer_str, 
-            'original_vqa_answer_str': original_vqa_answer_str,
-            'vqa_answer_label': torch.tensor(vqa_answer_ids, dtype=torch.long), #vqa_answer_ids
-            "image": image
-        }
+        if self.split in ["train", "val"]:
+            ann = self.annotations[idx]
+            que = self.questions[ann["id"]]
+            question_id = ann["id"]
+            
+            
+            question = que["question"]
+            question_type_ids = que["question_type"]
+            question_type_str = que["question_type_str"]
+            question_onehot = torch.from_numpy(que["onehot_features"])
+            encoding = self.bert_tokenizer.encode_plus(
+                question,
+                add_special_tokens=True,
+                max_length=self.args.max_ques_len,
+                return_token_type_ids=False,
+                padding='max_length',
+                truncation=True,
+                return_attention_mask=True,
+                return_tensors='pt',
+            )
+            
+            vqa_answer_str = ann["answer"]
+            vqa_answer_ids = self.vqa_ans_to_idx[vqa_answer_str]
+            
+            original_vqa_answer_str = ann["original_answer"]
+            answer_type_str = self.super_answer_types[original_vqa_answer_str]
+            answer_type_ids = self.question_type_to_idx[answer_type_str]
+            
+            image = image_preprocessing(que["img_path"], self.transform)
+            example = {
+                'img_path': que["img_path"],
+                'question_id': question_id,
+                'question_text': question,
+                'bert_input_ids': encoding['input_ids'].flatten(),
+                'bert_attention_mask': encoding['attention_mask'].flatten(),
+                'onehot_feature': question_onehot,
+                'question_type_str': question_type_str,
+                'question_type_label': torch.tensor(question_type_ids, dtype=torch.long),
+                'answer_type_str': answer_type_str,
+                'answer_type_label': torch.tensor(answer_type_ids, dtype=torch.long),
+                'vqa_answer_str':vqa_answer_str, 
+                'original_vqa_answer_str': original_vqa_answer_str,
+                'vqa_answer_label': torch.tensor(vqa_answer_ids, dtype=torch.long), #vqa_answer_ids
+                "image": image
+            }
+        else:
+            que = self.questions[idx]
+            question_id = que["id"]
+            question = que["question"]
+            # question_type_ids = que["question_type"]
+            # question_type_str = que["question_type_str"]
+            question_onehot = torch.from_numpy(que["onehot_features"])
+            encoding = self.bert_tokenizer.encode_plus(
+                question,
+                add_special_tokens=True,
+                max_length=self.args.max_ques_len,
+                return_token_type_ids=False,
+                padding='max_length',
+                truncation=True,
+                return_attention_mask=True,
+                return_tensors='pt',
+            )
+            image = image_preprocessing(que["img_path"], self.transform)
+            example = {
+                'img_path': que["img_path"],
+                'question_id': question_id,
+                'question_text': question,
+                'bert_input_ids': encoding['input_ids'].flatten(),
+                'bert_attention_mask': encoding['attention_mask'].flatten(),
+                'onehot_feature': question_onehot,
+                # 'question_type_str': question_type_str,
+                # 'question_type_label': torch.tensor(question_type_ids, dtype=torch.long),
+                # 'answer_type_str': answer_type_str,
+                # 'answer_type_label': torch.tensor(answer_type_ids, dtype=torch.long),
+                "image": image
+            }
+        
+        
+        
+        
         # print(example)
         # print('-'*100)
         return example
@@ -293,19 +335,33 @@ class QuestionDataset(Dataset):
     def load_questions(self):
         if self.split == "train":
             question_path = self.args.train_question
-        else:
+        elif self.split == "val":
             question_path = self.args.val_question
+        else:
+            question_path = self.args.test_question
         with open(question_path, 'r') as file:
             questions = json.load(file)["questions"]
-        processed_questions = {}
-        for question in questions:
-            question['img_path'] = os.path.join(self.image_path, question['img_path'])
-            question_type_str = self.question_type_dict[question["question"]]
-            question["question_type_str"] = question_type_str
-            question_type_idx = self.question_type_to_idx[question_type_str]
-            question["question_type"] = question_type_idx
-            question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
-            processed_questions[question["id"]] = question
+        
+        if self.split in  ["train", "val"]:
+            processed_questions = {}
+            for question in questions:
+                question['img_path'] = os.path.join(self.image_path, question['img_path'])
+                question_type_str = self.question_type_dict[question["question"]]
+                question["question_type_str"] = question_type_str
+                question_type_idx = self.question_type_to_idx[question_type_str]
+                question["question_type"] = question_type_idx
+                question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
+                processed_questions[question["id"]] = question
+        else:
+            processed_questions = []
+            for question in questions:
+                question['img_path'] = os.path.join(self.image_path, question['img_path'])
+                # question_type_str = self.question_type_dict[question["question"]]
+                # question["question_type_str"] = question_type_str
+                # question_type_idx = self.question_type_to_idx[question_type_str]
+                # question["question_type"] = question_type_idx
+                question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
+                processed_questions.append(question) 
         return processed_questions
 
     def prepare_question_vocab(self):

@@ -97,8 +97,8 @@ def train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch
                    })
         
     
-def test(model, loss_fn, rank, world_size, test_loader, epoch):
-    idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans
+def val(model, loss_fn, rank, world_size, val_loader, epoch):
+    idx_to_vqa_ans = val_loader.dataset.idx_to_vqa_ans
     model.eval()
     ddp_loss = torch.zeros(3).to(rank)
     results = []
@@ -106,7 +106,7 @@ def test(model, loss_fn, rank, world_size, test_loader, epoch):
     ids_list = []
     accuracy = 0
     with torch.no_grad():
-        for batch in test_loader:  # Assuming question_id is part of your dataloader
+        for batch in val_loader:  # Assuming question_id is part of your dataloader
             question_id = batch['question_id'].to(rank)
             rnn_questions = batch['onehot_feature'].to(rank)
             images = batch['image'].to(rank)
@@ -115,35 +115,49 @@ def test(model, loss_fn, rank, world_size, test_loader, epoch):
             output = model(images, rnn_questions)
             _, pred = torch.max(output.data, 1)
             loss = loss_fn(output, vqa_labels)
-            local_preds = pred.cpu().numpy().tolist()
             
             local_question_ids = question_id.cpu().numpy().tolist()
             ids.update(set(local_question_ids))
             ids_list += local_question_ids
-            local_targets = vqa_labels.cpu().numpy().tolist()
             # Loss calculation
             ddp_loss[0] += loss.item()
             ddp_loss[1] += pred.eq(vqa_labels.view_as(pred)).sum().item()
             ddp_loss[2] += len(vqa_labels)
+        dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
+        if rank == 0:
+            val_loss = ddp_loss[0] / ddp_loss[2]
+            accuracy = ddp_loss[1] / ddp_loss[2]
+            print('val Epoch  {}: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(epoch, 
+                val_loss, int(ddp_loss[1]), int(ddp_loss[2]),
+                100. * accuracy))
+            wandb.log({"val_accuracy": accuracy,
+                       "val_loss": val_loss,
+                       "epoch":epoch})
+        return accuracy
+
+def testing(model, rank, world_size, test_loader):
+    idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans
+    model.eval()
+    results = []
+    with torch.no_grad():
+        for batch in test_loader:  # Assuming question_id is part of your dataloader
+            question_id = batch['question_id'].to(rank)
+            rnn_questions = batch['onehot_feature'].to(rank)
+            images = batch['image'].to(rank)
             
-            for ques_id, pres, target in zip(local_question_ids, local_preds, local_targets):
+            output = model(images, rnn_questions)
+            _, pred = torch.max(output.data, 1)
+            local_preds = pred.cpu().numpy().tolist()
+            
+            local_question_ids = question_id.cpu().numpy().tolist()
+            
+            for ques_id, pres in zip(local_question_ids, local_preds):
                 item = {
                     "question_id": ques_id,
                     "prediction": idx_to_vqa_ans[str(pres)],
-                    "target": idx_to_vqa_ans[str(target)]
                     }
                 results.append(item)
-        dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
-        if rank == 0:
-            test_loss = ddp_loss[0] / ddp_loss[2]
-            accuracy = ddp_loss[1] / ddp_loss[2]
-            print('Test Epoch  {}: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(epoch, 
-                test_loss, int(ddp_loss[1]), int(ddp_loss[2]),
-                100. * accuracy))
-            wandb.log({"val_accuracy": accuracy,
-                       "val_loss": test_loss,
-                       "epoch":epoch})
-        return accuracy, results
+        return results
 
         
 def fsdp_main(rank, world_size, args):
@@ -170,29 +184,36 @@ def fsdp_main(rank, world_size, args):
     cudnn.benchmark = True
     dataset1 = QuestionDataset(args, "train")
     dataset2 = QuestionDataset(args, "val")
+    dataset3 = QuestionDataset(args, "test")
     if rank == 0:
         print(f"Number of Traning Sample: {len(dataset1)}")
         print(f"Number of Validation Sample: {len(dataset2)}")
+        print(f"Number of Test Sample: {len(dataset3)}")
         print(f"Question Vocabulary Size: {dataset1.token_size}")
 
     sampler1 = DistributedSampler(dataset1, rank=rank, num_replicas=world_size,shuffle=True)
     sampler2 = DistributedSampler(dataset2, rank=rank, num_replicas=world_size)
+    sampler3 = DistributedSampler(dataset3, rank=rank, num_replicas=world_size)
 
     train_kwargs = {'batch_size': args.batch_size, 'sampler': sampler1}
-    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': sampler2}
+    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': sampler2}
+    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': sampler3}
+    
     cuda_kwargs = {'num_workers': 2,
                     'pin_memory': True,
                     'shuffle': False}
     train_kwargs.update(cuda_kwargs)
+    val_kwargs.update(cuda_kwargs)
     test_kwargs.update(cuda_kwargs)
 
     train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
-    test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
+    val_loader = torch.utils.data.DataLoader(dataset2, **val_kwargs)
+    test_loader = torch.utils.data.DataLoader(dataset3, **test_kwargs)
     
     
     
     # if args.debug:
-    #     test_loader = train_loader
+    #     val_loader = train_loader
     my_auto_wrap_policy = functools.partial(
         size_based_auto_wrap_policy, min_num_params=20000
     )
@@ -219,25 +240,27 @@ def fsdp_main(rank, world_size, args):
     best_result = None
     for epoch in range(1, args.epochs + 1):
         train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch, sampler=sampler1)
-        val_accuracy, results  = test(model,loss_fn, rank, world_size, test_loader, epoch)
-        final_result = collect_result(results, rank, epoch)
+        val_accuracy  = val(model,loss_fn, rank, world_size, val_loader, epoch)
+        if epoch >= 10:
+            test_result  = testing(model, rank, world_size, test_loader)
+            final_result = collect_result(test_result, rank, epoch)
         if val_accuracy > best_acc and rank == 0:
             best_acc = val_accuracy
-            best_result = final_result
+            if epoch >= 10:
+                best_result = final_result
             wandb.log({"best_accuracy": best_acc})
         # scheduler.step()
     dist.barrier()
     if rank == 0:
         predictions = pd.DataFrame(best_result)
         predictions.to_csv("predictions.csv", index=False)
-        y_true = predictions['prediction']
-        y_pred = predictions['target']
-        plot_confusion_matrix(y_true, y_pred)
+    #     y_true = predictions['prediction']
+    #     y_pred = predictions['target']
+    #     # plot_confusion_matrix(y_true, y_pred)
         wandb.save("predictions.csv")
         # print('saving the model')
         # torch.save(model.state_dict(), "./checkpoints/bert-chatgptv1.pt")
         print('done!')
-    dist.barrier()
     wandb.finish()
 
     cleanup()
@@ -246,11 +269,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 64)')
+    parser.add_argument('--val-batch-size', type=int, default=128, metavar='N',
+                        help='input batch size for valing (default: 1000)')
     parser.add_argument('--test-batch-size', type=int, default=128, metavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=30, metavar='N',
                         help='number of epochs to train (default: 14)')
-    parser.add_argument('--lr', type=float, default=1e-5, metavar='LR',
+    parser.add_argument('--lr', type=float, default=10e-5, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.01, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
