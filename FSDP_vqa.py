@@ -60,13 +60,6 @@ def train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch
         rnn_questions = batch['onehot_feature'].to(rank)
         images = batch['image'].to(rank)
         vqa_labels = batch['vqa_answer_label'].to(rank)
-        
-        # print(images.size())
-        # print(rnn_questions.size())
-        # print(vqa_labels.size())
-        # print(rnn_questions.size())
-        # print("-"*100)
-        
         output = model(images, rnn_questions)
         
         _, pred = torch.max(output.data, 1)
@@ -124,9 +117,9 @@ def val(model, loss_fn, rank, world_size, val_loader, epoch):
             ddp_loss[1] += pred.eq(vqa_labels.view_as(pred)).sum().item()
             ddp_loss[2] += len(vqa_labels)
         dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
+        val_loss = ddp_loss[0] / ddp_loss[2]
+        accuracy = ddp_loss[1] / ddp_loss[2]
         if rank == 0:
-            val_loss = ddp_loss[0] / ddp_loss[2]
-            accuracy = ddp_loss[1] / ddp_loss[2]
             print('val Epoch  {}: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(epoch, 
                 val_loss, int(ddp_loss[1]), int(ddp_loss[2]),
                 100. * accuracy))
@@ -144,7 +137,6 @@ def testing(model, rank, world_size, test_loader):
             question_id = batch['question_id'].to(rank)
             rnn_questions = batch['onehot_feature'].to(rank)
             images = batch['image'].to(rank)
-            
             output = model(images, rnn_questions)
             _, pred = torch.max(output.data, 1)
             local_preds = pred.cpu().numpy().tolist()
@@ -166,7 +158,7 @@ def fsdp_main(rank, world_size, args):
     wandb.init(
             project="VQA new",
             group="VQA",
-            name= f"Normal VQA",
+            name= f"Normal VQA + {rank}",
             config=vars(args))
     
     directory_path = "./"
@@ -238,17 +230,27 @@ def fsdp_main(rank, world_size, args):
 
     best_acc = 0
     best_result = None
+    stop_epoch = 0
     for epoch in range(1, args.epochs + 1):
         train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch, sampler=sampler1)
-        val_accuracy  = val(model,loss_fn, rank, world_size, val_loader, epoch)
         if epoch >= 10:
-            test_result  = testing(model, rank, world_size, test_loader)
-            final_result = collect_result(test_result, rank, epoch)
-        if val_accuracy > best_acc and rank == 0:
-            best_acc = val_accuracy
-            if epoch >= 10:
-                best_result = final_result
-            wandb.log({"best_accuracy": best_acc})
+            if stop_epoch == 5:
+                print("STOP TRAINING")
+                break
+            val_accuracy  = val(model,loss_fn, rank, world_size, val_loader, epoch)
+            
+            if val_accuracy > best_acc:
+                best_acc = val_accuracy
+                
+                print("TESTING")
+                test_result  = testing(model, rank, world_size, test_loader)
+                final_result = collect_result(test_result, rank, epoch)
+                if rank == 0:
+                    best_result = final_result
+                    wandb.log({"best_accuracy": best_acc})
+            else:
+                stop_epoch += 1
+             
         # scheduler.step()
     dist.barrier()
     if rank == 0:
@@ -267,15 +269,15 @@ def fsdp_main(rank, world_size, args):
 if __name__ == '__main__':
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=256, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--val-batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--val-batch-size', type=int, default=256, metavar='N',
                         help='input batch size for valing (default: 1000)')
-    parser.add_argument('--test-batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=256, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=30, metavar='N',
+    parser.add_argument('--epochs', type=int, default=50, metavar='N',
                         help='number of epochs to train (default: 14)')
-    parser.add_argument('--lr', type=float, default=10e-5, metavar='LR',
+    parser.add_argument('--lr', type=float, default=5e-5, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.01, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
