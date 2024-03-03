@@ -240,6 +240,7 @@ def fsdp_main(rank, world_size, args):
             val_accuracy  = val(model,loss_fn, rank, world_size, val_loader, epoch)
             
             if val_accuracy > best_acc:
+                stop_epoch = 0
                 best_acc = val_accuracy
                 
                 print("TESTING")
