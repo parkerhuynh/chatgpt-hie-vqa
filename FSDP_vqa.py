@@ -288,8 +288,8 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true', default=False,
                         help='For Debuging')
 
-    if os.path.exists("./temp_result") and os.path.isdir("./temp_result"):
-        shutil.rmtree("./temp_result")
+    if os.path.exists("./temp_result_chatgpt_hie") and os.path.isdir("./temp_result_chatgpt_hie"):
+        shutil.rmtree("./temp_result_chatgpt_hie")
     os.makedirs("./temp_result")
     args = parser.parse_args()
     config = yaml.safe_load(open(f'./config.yaml'))

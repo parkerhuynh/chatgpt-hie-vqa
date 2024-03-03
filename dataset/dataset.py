@@ -212,17 +212,17 @@ class QuestionDataset(Dataset):
             
         
         if self.split in  ["val", "test"]:
-            self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open("./answer_dicts.json", 'r'))
+            self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open("./answer_dicts_hie.json", 'r'))
             print(f"{self.split} | Loaded vqa answer vocabulary")
             self.token_to_ix, self.pretrained_emb = pickle.load(open("./question_dicts.pkl", 'rb'))
             print(f"{self.split} | Loaded question vocabulary")
         else:
             if os.path.exists("./answer_dicts.json"):
-                self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open("./answer_dicts.json", 'r'))
+                self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open("./answer_dicts_hie.json", 'r'))
                 print(f"{self.split} | Loaded vqa answer vocabulary")
             else:
                 self.vqa_ans_to_idx, self.idx_to_vqa_ans = self.create_ann_vocal()
-                json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans], open("./answer_dicts.json", 'w'))
+                json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans], open("./answer_dicts_hie.json", 'w'))
                 print(f"{self.split} | Created vqa answer vocabulary")
             
             
@@ -403,9 +403,26 @@ class QuestionDataset(Dataset):
         return processed_annotations
     
     def create_ann_vocal(self):
+        path_files = self.args.stat_ques_list
+        stat_ques_list = []
+        for path_file in path_files:
+            with open(path_file, 'r') as file:
+                single_questions = json.load(file)
+            stat_ques_list += single_questions['questions']
+            
+        processed_questions = {}
+        for question in stat_ques_list:
+            question['img_path'] = os.path.join(self.image_path, question['img_path'])
+            question_type_str = self.question_type_dict[question["question"]]
+            question["question_type_str"] = question_type_str
+            question_type_idx = self.question_type_to_idx[question_type_str]
+            question["question_type"] = question_type_idx
+            question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
+            processed_questions[question["id"]] = question
+        
+        
         examples = []
         path_files = self.args.stat_ann_list
-        
         for path_file in path_files:
             with open(path_file, 'r') as file:
                 single_anns = json.load(file)

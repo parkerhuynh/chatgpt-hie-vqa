@@ -41,9 +41,33 @@ class QuestionEmbedding(nn.Module):
 
         return embedding
     
+class VQA_header(nn.Module):
+    """
+    A Visual Question Answering (VQA) header module.
+    """
+
+    def __init__(self, ans_vocab_type_dict):
+        super().__init__()
+
+        # ModuleDict for VQA headers
+        self.vqa_headers = nn.ModuleDict({
+            answer_type: nn.Sequential(
+                nn.Linear(1024, 1000),
+                nn.Dropout(p=0.5),
+                nn.Tanh(),
+                nn.Linear(1000, len(ans_vocab_type_dict[answer_type]))
+            ) for answer_type in ans_vocab_type_dict.keys()
+        })
+    def forward(self, hidden_states):
+        results = {}
+        for question_category in self.vqa_headers.keys():
+            outputs = self.vqa_headers[question_category](hidden_states)
+            results[question_category] = outputs
+        return results
+       
 class VQA(nn.Module):
 
-    def __init__(self, args, question_vocab_size, ans_vocab_size):
+    def __init__(self, args, question_vocab_size, ans_vocab_type_dict):
         """
         Fusing Image feature and question feature using Full Connected Layer
         """
@@ -56,6 +80,8 @@ class VQA(nn.Module):
             word_embedding_size = args.word_embedding,
             hidden_size = args.rnn_hidden_size
             )
+        
+        self.vqa_mlp = VQA_header(ans_vocab_type_dict)
         self.mlp = nn.Sequential(
                 nn.Linear(args.image_feature_output, 1000),
                 nn.Dropout(p=0.5),
@@ -66,6 +92,8 @@ class VQA(nn.Module):
         image = self.image_encoder(image)
         question = self.word_embeddings(question)
         question = self.question_encoder(question)
+        
+        
         combine  = torch.mul(image,question)
         output = self.mlp(combine)
         return output
