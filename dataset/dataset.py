@@ -217,7 +217,7 @@ class QuestionDataset(Dataset):
             self.token_to_ix, self.pretrained_emb = pickle.load(open("./question_dicts.pkl", 'rb'))
             print(f"{self.split} | Loaded question vocabulary")
         else:
-            if os.path.exists("./answer_dicts.json"):
+            if os.path.exists("./answer_dicts_hie.json"):
                 self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open("./answer_dicts_hie.json", 'r'))
                 print(f"{self.split} | Loaded vqa answer vocabulary")
             else:
@@ -403,7 +403,7 @@ class QuestionDataset(Dataset):
         return processed_annotations
     
     def create_ann_vocal(self):
-        path_files = self.args.stat_ques_list
+        path_files = [self.args.train_question, self.args.val_question]
         stat_ques_list = []
         for path_file in path_files:
             with open(path_file, 'r') as file:
@@ -412,12 +412,9 @@ class QuestionDataset(Dataset):
             
         processed_questions = {}
         for question in stat_ques_list:
-            question['img_path'] = os.path.join(self.image_path, question['img_path'])
-            question_type_str = self.question_type_dict[question["question"]]
+            question_str = question["question"]
+            question_type_str = self.question_type_dict[question_str]
             question["question_type_str"] = question_type_str
-            question_type_idx = self.question_type_to_idx[question_type_str]
-            question["question_type"] = question_type_idx
-            question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
             processed_questions[question["id"]] = question
         
         
@@ -436,24 +433,30 @@ class QuestionDataset(Dataset):
             if ans_count >= 2:
                 ann["answer"] = prep_ans(ann["answer"])
                 ann["original_answer"] = ann["answer"]
+                ann["question_type"] = processed_questions[ann["id"]]["question_type_str"]
                 processed_examples.append(ann)
             # elif ann["overall_scores"]["question"] < 0.5:
             #     ann["answer"] = prep_ans(ann["answer"])
             #     ann["original_answer"] = ann["answer"]
             #     ann["answer"] = "unanswerable"
             #     processed_examples.append(ann)
+        
         examples = processed_examples      
         # ans2tok, tok2ans = {"unanswerable": 0}, {0: "unanswerable"}
         ans2tok, tok2ans = {}, {}
-        id = 0
+        id = {}
         
         for ex in examples:
+            question_type = ex["question_type"]
+            if question_type not in id:
+                id[question_type] = 0
+                ans2tok[question_type] = {}
+                tok2ans[question_type] = {} 
             ans_str = ex["answer"]
-        
-            if ans_str not in ans2tok.keys():
-                ans2tok[ans_str] = id
-                tok2ans[id] = ans_str
-                id += 1 
+            if ans_str not in ans2tok[question_type]:
+                ans2tok[question_type][ans_str] = id[question_type]
+                tok2ans[question_type][id[question_type]] = ans_str
+                id[question_type] += 1 
         return ans2tok, tok2ans
     
     def load_question_type(self):

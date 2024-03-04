@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import StepLR
 import pandas as pd
 import torch.distributed as dist
 import torch.multiprocessing as mp
-import wandb
+# import #wandb
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -38,7 +38,7 @@ wrap,
 from model import VQA as VQA_model
 import random
 from torch.optim import Adam
-os.environ["#wandb_START_METHOD"] = "thread"
+os.environ["##wandb_START_METHOD"] = "thread"
 import shutil
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -74,7 +74,7 @@ def train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch
         ddp_loss[2] += len(vqa_labels)
         
         if batch_idx % 50 == 0 and rank == 1:
-            wandb.log({"iter_loss": loss.item()/len(vqa_labels)})
+            #wandb.log({"iter_loss": loss.item()/len(vqa_labels)})
             print(f'Train Epoch {epoch} [{batch_idx}/{len(train_loader)}]:  loss: {(loss.item())/len(vqa_labels):.4f}')
     
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
@@ -84,10 +84,10 @@ def train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch
         print('Train Epoch {}:  Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(epoch, 
                 train_loss, int(ddp_loss[1]), int(ddp_loss[2]),
                 100. * accuracy))
-        wandb.log({"epoch":epoch,
-                   "train_loss": train_loss,
-                   "train_accuracy": accuracy
-                   })
+        # #wandb.log({"epoch":epoch,
+        #            "train_loss": train_loss,
+        #            "train_accuracy": accuracy
+        #            })
         
     
 def val(model, loss_fn, rank, world_size, val_loader, epoch):
@@ -123,9 +123,9 @@ def val(model, loss_fn, rank, world_size, val_loader, epoch):
             print('val Epoch  {}: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(epoch, 
                 val_loss, int(ddp_loss[1]), int(ddp_loss[2]),
                 100. * accuracy))
-            wandb.log({"val_accuracy": accuracy,
-                       "val_loss": val_loss,
-                       "epoch":epoch})
+            #wandb.log({"val_accuracy": accuracy,
+                    #    "val_loss": val_loss,
+                    #    "epoch":epoch})
         return accuracy
 
 def testing(model, rank, world_size, test_loader):
@@ -155,11 +155,11 @@ def testing(model, rank, world_size, test_loader):
 def fsdp_main(rank, world_size, args):
     setup(rank, world_size)
     
-    wandb.init(
-            project="VQA new",
-            group="VQA",
-            name= f"Normal VQA + {rank}",
-            config=vars(args))
+    #wandb.init(
+            # project="VQA new",
+            # group="VQA",
+            # name= f"Normal VQA + {rank}",
+            # config=vars(args))
     
     directory_path = "./"
     extensions = ['.py', '.yaml', ".ipynb"]
@@ -167,7 +167,7 @@ def fsdp_main(rank, world_size, args):
     directory = os.getcwd()
     for filename in files_list:
         file_path = os.path.join(directory, filename)
-        wandb.save(file_path, directory)
+        #wandb.save(file_path, directory)
 
     seed = args.seed
     torch.manual_seed(seed)
@@ -247,7 +247,7 @@ def fsdp_main(rank, world_size, args):
                 final_result = collect_result(test_result, rank, epoch)
                 if rank == 0:
                     best_result = final_result
-                    wandb.log({"best_accuracy": best_acc})
+                    #wandb.log({"best_accuracy": best_acc})
             else:
                 stop_epoch += 1
              
@@ -259,11 +259,11 @@ def fsdp_main(rank, world_size, args):
     #     y_true = predictions['prediction']
     #     y_pred = predictions['target']
     #     # plot_confusion_matrix(y_true, y_pred)
-        wandb.save("predictions.csv")
+        #wandb.save("predictions.csv")
         # print('saving the model')
         # torch.save(model.state_dict(), "./checkpoints/bert-chatgptv1.pt")
         print('done!')
-    wandb.finish()
+    #wandb.finish()
 
     cleanup()
 if __name__ == '__main__':
@@ -290,7 +290,7 @@ if __name__ == '__main__':
 
     if os.path.exists("./temp_result_chatgpt_hie") and os.path.isdir("./temp_result_chatgpt_hie"):
         shutil.rmtree("./temp_result_chatgpt_hie")
-    os.makedirs("./temp_result")
+    os.makedirs("./temp_result_chatgpt_hie")
     args = parser.parse_args()
     config = yaml.safe_load(open(f'./config.yaml'))
     vars(args).update(config)
