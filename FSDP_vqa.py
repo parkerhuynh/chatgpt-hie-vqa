@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-from dataset.dataset import QuestionDataset
+from datasets import create_vqa_datasets
 import yaml
 import torch.backends.cudnn as cudnn
 from torch.optim.lr_scheduler import StepLR
@@ -35,11 +35,14 @@ size_based_auto_wrap_policy,
 enable_wrap,
 wrap,
 )
-from model import VQA as VQA_model
+from models import call_model
 import random
 from torch.optim import Adam
 os.environ["#wandb_START_METHOD"] = "thread"
 import shutil
+
+import warnings
+warnings.filterwarnings("ignore")
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
@@ -60,28 +63,27 @@ def train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch
         rnn_questions = batch['onehot_feature'].to(rank)
         images = batch['image'].to(rank)
         vqa_labels = batch['vqa_answer_label'].to(rank)
-        
-        # print(images.size())
-        # print(rnn_questions.size())
-        # print(vqa_labels.size())
-        # print(rnn_questions.size())
-        # print("-"*100)
-        
         output = model(images, rnn_questions)
-        
-        _, pred = torch.max(output.data, 1)
+
         
         loss = loss_fn(output, vqa_labels)
         
+        pred_np = output.cpu().data.numpy()
+        pred_argmax = np.argmax(pred_np, axis=1)
+        indices = torch.tensor(pred_argmax)
+        rows = torch.arange(vqa_labels.size(0))
+        selected_values = vqa_labels[rows, indices]
+        sum_selected_values = selected_values.sum()
         loss.backward()
         optimizer.step()
         
         ddp_loss[0] += loss.item()
-        ddp_loss[1] += (pred == vqa_labels).sum().item()
+        ddp_loss[1] += sum_selected_values.item()
         ddp_loss[2] += len(vqa_labels)
         
         if batch_idx % 50 == 0 and rank == 1:
-            wandb.log({"iter_loss": loss.item()/len(vqa_labels)})
+            if args.wandb:
+                wandb.log({"iter_loss": loss.item()/len(vqa_labels)})
             print(f'Train Epoch {epoch} [{batch_idx}/{len(train_loader)}]:  loss: {(loss.item())/len(vqa_labels):.4f}')
     
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
@@ -89,51 +91,62 @@ def train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch
         train_loss = ddp_loss[0] / ddp_loss[2]
         accuracy = ddp_loss[1] / ddp_loss[2]
         print('Train Epoch {}:  Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(epoch, 
-                train_loss, int(ddp_loss[1]), int(ddp_loss[2]),
+                train_loss, ddp_loss[1], int(ddp_loss[2]),
                 100. * accuracy))
-        wandb.log({"epoch":epoch,
+        if args.wandb:
+            wandb.log({"epoch":epoch,
                    "train_loss": train_loss,
                    "train_accuracy": accuracy
                    })
         
     
-def val(model, loss_fn, rank, world_size, val_loader, epoch):
+def val(model, loss_fn, rank, world_size, val_loader, epoch, args):
     idx_to_vqa_ans = val_loader.dataset.idx_to_vqa_ans
     model.eval()
     ddp_loss = torch.zeros(3).to(rank)
-    results = []
-    ids = set()
-    ids_list = []
     accuracy = 0
+    results = []
     with torch.no_grad():
         for batch in val_loader:  # Assuming question_id is part of your dataloader
             question_id = batch['question_id'].to(rank)
             rnn_questions = batch['onehot_feature'].to(rank)
             images = batch['image'].to(rank)
             vqa_labels = batch['vqa_answer_label'].to(rank)
+            local_question_ids = question_id.cpu().numpy().tolist()
             
             output = model(images, rnn_questions)
-            _, pred = torch.max(output.data, 1)
             loss = loss_fn(output, vqa_labels)
+            pred_np = output.cpu().data.numpy()
+            pred_argmax = np.argmax(pred_np, axis=1)
+            indices = torch.tensor(pred_argmax)
+            rows = torch.arange(vqa_labels.size(0))
+            selected_values = vqa_labels[rows, indices]
+            sum_selected_values = selected_values.sum()
             
-            local_question_ids = question_id.cpu().numpy().tolist()
-            ids.update(set(local_question_ids))
-            ids_list += local_question_ids
+            local_preds = pred_argmax
+            for ques_id, pres in zip(local_question_ids, local_preds):
+                item = {
+                    "question_id": ques_id,
+                    "prediction": idx_to_vqa_ans[str(pres)],
+                    }
+                results.append(item)
+            
             # Loss calculation
             ddp_loss[0] += loss.item()
-            ddp_loss[1] += pred.eq(vqa_labels.view_as(pred)).sum().item()
+            ddp_loss[1] += sum_selected_values.item()
             ddp_loss[2] += len(vqa_labels)
         dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
+        val_loss = ddp_loss[0] / ddp_loss[2]
+        accuracy = ddp_loss[1] / ddp_loss[2]
         if rank == 0:
-            val_loss = ddp_loss[0] / ddp_loss[2]
-            accuracy = ddp_loss[1] / ddp_loss[2]
             print('val Epoch  {}: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(epoch, 
-                val_loss, int(ddp_loss[1]), int(ddp_loss[2]),
+                val_loss, ddp_loss[1], int(ddp_loss[2]),
                 100. * accuracy))
-            wandb.log({"val_accuracy": accuracy,
+            if args.wandb:
+                wandb.log({"val_accuracy": accuracy,
                        "val_loss": val_loss,
                        "epoch":epoch})
-        return accuracy
+        return accuracy, results
 
 def testing(model, rank, world_size, test_loader):
     idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans
@@ -144,10 +157,11 @@ def testing(model, rank, world_size, test_loader):
             question_id = batch['question_id'].to(rank)
             rnn_questions = batch['onehot_feature'].to(rank)
             images = batch['image'].to(rank)
-            
             output = model(images, rnn_questions)
             _, pred = torch.max(output.data, 1)
-            local_preds = pred.cpu().numpy().tolist()
+            pred_np = output.cpu().data.numpy()
+            pred_argmax = np.argmax(pred_np, axis=1)
+            local_preds = pred_argmax
             
             local_question_ids = question_id.cpu().numpy().tolist()
             
@@ -162,29 +176,28 @@ def testing(model, rank, world_size, test_loader):
         
 def fsdp_main(rank, world_size, args):
     setup(rank, world_size)
-    
-    wandb.init(
+    if args.wandb:
+        wandb.init(
             project="VQA new",
-            group="VQA",
-            name= f"Normal VQA",
+            group="VQA_vqav2",
+            name= f"VQA + {rank}",
             config=vars(args))
     
     directory_path = "./"
     extensions = ['.py', '.yaml', ".ipynb"]
     files_list = list_files(directory_path, extensions)
     directory = os.getcwd()
-    for filename in files_list:
-        file_path = os.path.join(directory, filename)
-        wandb.save(file_path, directory)
+    if args.wandb:
+        for filename in files_list:
+            file_path = os.path.join(directory, filename)
+            wandb.save(file_path, directory)
 
     seed = args.seed
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
     cudnn.benchmark = True
-    dataset1 = QuestionDataset(args, "train")
-    dataset2 = QuestionDataset(args, "val")
-    dataset3 = QuestionDataset(args, "test")
+    dataset1, dataset2, dataset3 = create_vqa_datasets(args, rank)
     if rank == 0:
         print(f"Number of Traning Sample: {len(dataset1)}")
         print(f"Number of Validation Sample: {len(dataset2)}")
@@ -218,6 +231,7 @@ def fsdp_main(rank, world_size, args):
         size_based_auto_wrap_policy, min_num_params=20000
     )
     torch.cuda.set_device(rank)
+    VQA_model  = call_model(args.model_name)
 
     model = VQA_model(args = args,
                       question_vocab_size = dataset1.token_size,
@@ -225,8 +239,8 @@ def fsdp_main(rank, world_size, args):
     model = FSDP(model,
             auto_wrap_policy=my_auto_wrap_policy)
     optimizer = Adam(model.parameters(), lr=args.lr)
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
-    loss_fn = nn.CrossEntropyLoss(reduction  = "sum")
+    scheduler = StepLR(optimizer, step_size=20, gamma=args.gamma, verbose = True)
+    loss_fn = torch.nn.BCELoss(reduction='sum').to(rank)
     if rank == 0:
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -235,49 +249,72 @@ def fsdp_main(rank, world_size, args):
         print(f"Total Parameters: {total_params}")
         print(f"Trainable Parameters: {trainable_params}")
         print(f"Untrainable Parameters: {untrainable_params}")
-
     best_acc = 0
-    best_result = None
+    test_best_result = None
+    val_best_result = None
+    stop_epoch = 0
     for epoch in range(1, args.epochs + 1):
         train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch, sampler=sampler1)
-        val_accuracy  = val(model,loss_fn, rank, world_size, val_loader, epoch)
-        if epoch >= 10:
-            test_result  = testing(model, rank, world_size, test_loader)
-            final_result = collect_result(test_result, rank, epoch)
-        if val_accuracy > best_acc and rank == 0:
-            best_acc = val_accuracy
-            if epoch >= 10:
-                best_result = final_result
-            wandb.log({"best_accuracy": best_acc})
-        # scheduler.step()
+        if epoch >= 15:
+            if stop_epoch == 7:
+                print("STOP TRAINING")
+                break
+            val_accuracy, val_result  = val(model,loss_fn, rank, world_size, val_loader, epoch, args)
+            
+            if val_accuracy > best_acc:
+                stop_epoch = 0
+                best_acc = val_accuracy
+                
+                print("TESTING")
+                val_final_result = collect_result(val_result, rank, epoch, "val", args)
+                
+                
+                test_result  = testing(model, rank, world_size, test_loader)
+                test_final_result = collect_result(test_result, rank, epoch, "test", args)
+                
+                if rank == 0:
+                    test_best_result = test_final_result
+                    val_best_result = val_final_result
+                    if args.wandb:
+                        wandb.log({"best_accuracy": best_acc})
+            else:
+                stop_epoch += 1
+        scheduler.step()
     dist.barrier()
-    if rank == 0:
-        predictions = pd.DataFrame(best_result)
-        predictions.to_csv("predictions.csv", index=False)
+    if rank == 0 and args.wandb:
+        val_predictions = pd.DataFrame(val_best_result)
+        val_predictions.to_csv("val_predictions.csv", index=False)
+        
+        test_predictions = pd.DataFrame(test_best_result)
+        test_predictions.to_csv("test_predictions.csv", index=False)
     #     y_true = predictions['prediction']
     #     y_pred = predictions['target']
     #     # plot_confusion_matrix(y_true, y_pred)
-        wandb.save("predictions.csv")
+        wandb.save("test_predictions.csv")
         # print('saving the model')
         # torch.save(model.state_dict(), "./checkpoints/bert-chatgptv1.pt")
         print('done!')
-    wandb.finish()
+    if args.wandb:
+        wandb.finish()
 
     cleanup()
 if __name__ == '__main__':
+    model_dict = {
+        0: "LSTM_VGG"
+    }
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=256, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--val-batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--val-batch-size', type=int, default=256, metavar='N',
                         help='input batch size for valing (default: 1000)')
-    parser.add_argument('--test-batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=256, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=30, metavar='N',
+    parser.add_argument('--epochs', type=int, default=100 , metavar='N',
                         help='number of epochs to train (default: 14)')
-    parser.add_argument('--lr', type=float, default=10e-5, metavar='LR',
+    parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
                         help='learning rate (default: 1.0)')
-    parser.add_argument('--gamma', type=float, default=0.01, metavar='M',
+    parser.add_argument('--gamma', type=float, default=0.5, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
@@ -285,13 +322,34 @@ if __name__ == '__main__':
                         help='random seed (default: 42)')
     parser.add_argument('--debug', action='store_true', default=False,
                         help='For Debuging')
-
-    if os.path.exists("./temp_result") and os.path.isdir("./temp_result"):
-        shutil.rmtree("./temp_result")
-    os.makedirs("./temp_result")
+    parser.add_argument('--dataset', type=str, choices=['simpsons', 'vqav2'], default='simpsons',
+                    help='Choose dataset: "simpsons" or "vqav2"')
+    parser.add_argument('--wandb', action='store_true', default=False,
+                        help='Log WandB')
+    parser.add_argument('--model', type=int, choices=list(model_dict.keys()), default=0,
+                    help=f'Choose model: {model_dict}')    
     args = parser.parse_args()
-    config = yaml.safe_load(open(f'./config.yaml'))
-    vars(args).update(config)
+    model_name = model_dict[args.model]
+    args.model_name = model_name
+    
+    temp_result_path = f"./tem_results/{args.dataset}/{args.model_name}"
+    result_path = f"./results/{args.dataset}/{args.model_name}"
+    args.temp_result_path = temp_result_path
+    args.result_path = result_path
+    
+    if os.path.exists(temp_result_path) and os.path.isdir(temp_result_path):
+        shutil.rmtree(temp_result_path)
+    os.makedirs(temp_result_path)
+    
+    if os.path.exists(result_path) and os.path.isdir(result_path):
+        shutil.rmtree(result_path)
+    os.makedirs(result_path)
+    
+    config_model = yaml.safe_load(open(f'./config/models/{model_name}.yaml'))
+    dataset_config = yaml.safe_load(open(f'./config/datasets/{args.dataset}.yaml'))
+    vars(args).update(config_model)
+    vars(args).update(dataset_config)
+    
 
     torch.manual_seed(args.seed)
 

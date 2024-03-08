@@ -1,0 +1,23 @@
+stat_ques_list:
+  - "/home/ndhuynh/data/simpsonsvqa/v1_Question_Train_simpsons_vqa.json"
+  - "/home/ndhuynh/data/simpsonsvqa/v1_Question_Val_simpsons_vqa.json"
+  - "/home/ndhuynh/data/simpsonsvqa/v1_Question_Test_Private_110496_simpsons_vqa.json"
+train_question: '/home/ndhuynh/data/simpsonsvqa/v1_Question_Train_simpsons_vqa.json'
+val_question: '/home/ndhuynh/data/simpsonsvqa/v1_Question_Val_simpsons_vqa.json'
+test_question: '/home/ndhuynh/data/simpsonsvqa/v1_Question_Test_Private_110496_simpsons_vqa.json'
+
+
+stat_ann_list: 
+  - "/home/ndhuynh/data/simpsonsvqa/v1_Annotation_Train_simpsons_vqa.json"
+  - "/home/ndhuynh/data/simpsonsvqa/v1_Annotation_Val_simpsons_vqa.json"
+train_annotation: '/home/ndhuynh/data/simpsonsvqa/v1_Annotation_Train_simpsons_vqa.json'
+val_annotation : '/home/ndhuynh/data/simpsonsvqa/v1_Annotation_Val_simpsons_vqa.json'
+
+
+train_image_path: "/home/ndhuynh/data/simpsonsvqa/train_images/"
+val_image_path: "/home/ndhuynh/data/simpsonsvqa/val_images/"
+test_image_path: "/home/ndhuynh/data/simpsonsvqa/test_images/"
+
+answer_dict: "./datasets/answer_dicts_simpsons.json"
+question_dict: "./datasets/question_dicts_simpsons.pkl"
+# test_annotation : '/home/ndhuynh/data/simpsonsvqa/v1_Annotation_Test_Private_110496_simpsons_vqa.json'

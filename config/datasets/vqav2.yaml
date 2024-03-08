@@ -1,0 +1,22 @@
+stat_ques_list:
+  - "/home/ndhuynh/data/vqav2/v2_OpenEnded_mscoco_train2014_questions.json"
+  - "/home/ndhuynh/data/vqav2/v2_OpenEnded_mscoco_val2014_questions.json"
+  - "/home/ndhuynh/data/vqav2/v2_OpenEnded_mscoco_test-dev2015_questions.json"
+train_question: '/home/ndhuynh/data/vqav2/v2_OpenEnded_mscoco_train2014_questions.json'
+val_question: '/home/ndhuynh/data/vqav2/v2_OpenEnded_mscoco_val2014_questions.json'
+test_question: '/home/ndhuynh/data/vqav2/v2_OpenEnded_mscoco_test-dev2015_questions.json'
+stat_ann_list: 
+  - "/home/ndhuynh/data/vqav2/v2_mscoco_train2014_annotations.json"
+  - "/home/ndhuynh/data/vqav2/v2_mscoco_val2014_annotations.json"
+train_annotation: '/home/ndhuynh/data/vqav2/v2_mscoco_train2014_annotations.json'
+val_annotation : '/home/ndhuynh/data/vqav2/v2_mscoco_val2014_annotations.json'
+
+
+train_image_path: "/home/ndhuynh/data/vqav2/train2014"
+val_image_path: "/home/ndhuynh/data/vqav2/val2014"
+test_image_path: "/home/ndhuynh/data/vqav2/test2015"
+
+answer_dict: "./datasets/answer_dicts_vqav2.json"
+question_dict: "./datasets/question_dicts_vqav2.pkl"
+question_type: "./datasets/train_question_type_gpt_v6_vqav2.json"
+# test_annotation : '/home/ndhuynh/data/simpsonsvqa/v1_Annotation_Test_Private_110496_simpsons_vqa.json'

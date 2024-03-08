@@ -17,8 +17,9 @@ def read_json(rpath: str):
             result.append(json.loads(line.strip()))
 
     return result
-def collect_result(result, rank, epoch):
-    with open(f"./temp_result/temp_result_epoch_{epoch}_rank{rank}.json", 'wt') as f:
+def collect_result(result, rank, epoch, split, args):
+    main_temp_result_path = os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_{split}.json")
+    with open(main_temp_result_path, 'wt') as f:
         for res in result:
             f.write(json.dumps(res) + '\n')
     dist.barrier()
@@ -26,7 +27,8 @@ def collect_result(result, rank, epoch):
     result = []
     if rank == 0:
         for rank_id in range(dist.get_world_size()):
-            result += read_json(f"./temp_result/temp_result_epoch_{epoch}_rank{rank_id}.json")
+            temp_result_path_i = os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank_id}_{split}.json")
+            result += read_json(temp_result_path_i)
 
         result_new = []
         id_list = set()
@@ -35,9 +37,9 @@ def collect_result(result, rank, epoch):
                 id_list.add(res["question_id"])
                 result_new.append(res)
         result = result_new
-
-        json.dump(result, open(f"./results/temp_result_epoch_{epoch}.json", 'w'), indent=4)
-        print(f"../result/temp_result_epoch_{epoch}.json")
+        result_path = os.path.join(args.result_path, f"epoch_{epoch}_{split}.json")
+        json.dump(result, open(result_path, 'w'), indent=4)
+        print(f"saving {result_path}")
 
     dist.barrier()
     print(len(result))
