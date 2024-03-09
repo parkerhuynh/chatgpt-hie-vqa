@@ -197,20 +197,20 @@ def fsdp_main(rank, world_size, args):
     np.random.seed(seed)
     random.seed(seed)
     cudnn.benchmark = True
-    dataset1, dataset2, dataset3 = create_vqa_datasets(args, rank)
+    train_dataset, val_dataset, test_dataset = create_vqa_datasets(args, rank)
     if rank == 0:
-        print(f"Number of Traning Sample: {len(dataset1)}")
-        print(f"Number of Validation Sample: {len(dataset2)}")
-        print(f"Number of Test Sample: {len(dataset3)}")
-        print(f"Question Vocabulary Size: {dataset1.token_size}")
+        print(f"Number of Traning Sample: {len(train_dataset)}")
+        print(f"Number of Validation Sample: {len(val_dataset)}")
+        print(f"Number of Test Sample: {len(test_dataset)}")
+        print(f"Question Vocabulary Size: {train_dataset.token_size}")
 
-    sampler1 = DistributedSampler(dataset1, rank=rank, num_replicas=world_size,shuffle=True)
-    sampler2 = DistributedSampler(dataset2, rank=rank, num_replicas=world_size)
-    sampler3 = DistributedSampler(dataset3, rank=rank, num_replicas=world_size)
+    train_sample = DistributedSampler(train_dataset, rank=rank, num_replicas=world_size, shuffle=True)
+    val_sample = DistributedSampler(val_dataset, rank=rank, num_replicas=world_size)
+    test_sample = DistributedSampler(test_dataset, rank=rank, num_replicas=world_size)
 
-    train_kwargs = {'batch_size': args.batch_size, 'sampler': sampler1}
-    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': sampler2}
-    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': sampler3}
+    train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample}
+    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample}
+    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample}
     
     cuda_kwargs = {'num_workers': 2,
                     'pin_memory': True,
@@ -219,9 +219,9 @@ def fsdp_main(rank, world_size, args):
     val_kwargs.update(cuda_kwargs)
     test_kwargs.update(cuda_kwargs)
 
-    train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
-    val_loader = torch.utils.data.DataLoader(dataset2, **val_kwargs)
-    test_loader = torch.utils.data.DataLoader(dataset3, **test_kwargs)
+    train_loader = torch.utils.data.DataLoader(train_dataset,**train_kwargs)
+    val_loader = torch.utils.data.DataLoader(val_dataset, **val_kwargs)
+    test_loader = torch.utils.data.DataLoader(test_dataset, **test_kwargs)
     
     
     
@@ -234,8 +234,8 @@ def fsdp_main(rank, world_size, args):
     VQA_model  = call_model(args.model_name)
 
     model = VQA_model(args = args,
-                      question_vocab_size = dataset1.token_size,
-                      ans_vocab_size = dataset1.vqa_output_dim).to(rank)
+                      question_vocab_size = train_dataset.token_size,
+                      ans_vocab_size = train_dataset.vqa_output_dim).to(rank)
     model = FSDP(model,
             auto_wrap_policy=my_auto_wrap_policy)
     optimizer = Adam(model.parameters(), lr=args.lr)
@@ -254,7 +254,7 @@ def fsdp_main(rank, world_size, args):
     val_best_result = None
     stop_epoch = 0
     for epoch in range(1, args.epochs + 1):
-        train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch, sampler=sampler1)
+        train(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch, sampler=train_sample)
         if epoch >= 15:
             if stop_epoch == 7:
                 print("STOP TRAINING")
