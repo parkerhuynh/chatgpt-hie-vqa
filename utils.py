@@ -42,8 +42,8 @@ def collect_result(result, rank, epoch, split, args):
         print(f"saving {result_path}")
 
     dist.barrier()
-    print(len(result))
-
+    if rank == 0:
+        print(f"total number of {split} set: {len(result)}")
     return result
 
 def plot_confusion_matrix(y_true, y_pred):

@@ -12,6 +12,7 @@ from torchvision import transforms
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW
 from datasets.randaugment import RandomAugment
 import random
+
 contractions = {
     "aint": "ain't", "arent": "aren't", "cant": "can't", "couldve":
     "could've", "couldnt": "couldn't", "couldn'tve": "couldn't've",
@@ -205,37 +206,45 @@ class VQADataset(Dataset):
         
         # with open('/home/ndhuynh/github/HieVQA/dataset/super_answer_type_simpsons.json', 'r') as file:
         #     self.super_answer_types = json.load(file)
-            
-        
         if self.split in  ["val", "test"]:
-            self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open(self.args.answer_dict, 'r'))
-            if self.rank == 0:
-                print(f"{self.split} | Loaded vqa answer vocabulary")
             self.token_to_ix, self.pretrained_emb = pickle.load(open(self.args.question_dict, 'rb'))
             if self.rank == 0:
-                print(f"{self.split} | Loaded question vocabulary")
+                print(f"    - {self.split} : Loaded question vocabulary")
         else:
-            if os.path.exists(self.args.answer_dict):
-                self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open(self.args.answer_dict, 'r'))
-                if self.rank == 0:
-                    print(f"{self.split} | Loaded vqa answer vocabulary")
-            else:
-                self.vqa_ans_to_idx, self.idx_to_vqa_ans = self.create_ann_vocal()
-                json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans], open(self.args.answer_dict, 'w'))
-                if self.rank == 0:
-                    print(f"{self.split} | Created vqa answer vocabulary")
-            
-            
             if os.path.exists(self.args.question_dict):  
                 self.token_to_ix, self.pretrained_emb = pickle.load(open(self.args.question_dict, 'rb'))
                 if self.rank == 0:
-                    print(f"{self.split} | Loaded question vocabulary")
+                    print(f"    - {self.split} : Loaded question vocabulary")
             else:
                 self.token_to_ix, self.pretrained_emb = self.prepare_question_vocab()
                 pickle.dump([self.token_to_ix, self.pretrained_emb ], open(self.args.question_dict, 'wb'))
                 if self.rank == 0:
-                    print(f"{self.split} | Created question vocabulary")
+                    print(f"    - {self.split} : Created question vocabulary")
+              
         self.questions = self.load_questions()
+        if self.split in  ["val", "test"]:
+            self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map = json.load(open(self.args.answer_dict, 'r'))
+            if self.rank == 0:
+                print(f"    - {self.split} : Loaded vqa answer vocabulary")
+        else:
+            if os.path.exists(self.args.answer_dict):
+                self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map = json.load(open(self.args.answer_dict, 'r'))
+                if self.rank == 0:
+                    print(f"    - {self.split} : Loaded vqa answer vocabulary")
+            else:
+                if "hie" in args.model_name.lower():
+                    self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map  = self.create_hie_ann_vocal()
+                    json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map], open(self.args.answer_dict, 'w'))
+                else:
+                    self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map = self.create_normal_ann_vocal()
+                    json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map], open(self.args.answer_dict, 'w'))
+
+                if self.rank == 0:
+                    print(f"    - {self.split} : Created vqa answer vocabulary")
+            
+        self.question_type_output_dim = len(self.question_type_to_idx.keys())
+           
+        
         if self.split in ["train", "val"]:
             self.annotations = self.load_annotations()
         self.token_size = len(self.token_to_ix)
@@ -244,7 +253,7 @@ class VQADataset(Dataset):
 
     def __len__(self):
         if self.args.debug:
-            return 64
+            return 128
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
     def __getitem__(self, idx):
@@ -277,7 +286,7 @@ class VQADataset(Dataset):
             # answer_type_str = self.super_answer_types[original_vqa_answer_str]
             # answer_type_ids = self.question_type_to_idx[answer_type_str]
             
-            image = image_preprocessing(que["img_path"], self.transform)
+            image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             
             ans_iter = proc_ans(ann, self.vqa_ans_to_idx)
             example = {
@@ -295,8 +304,6 @@ class VQADataset(Dataset):
                 'vqa_answer_label': torch.from_numpy(ans_iter) , #torch.tensor(vqa_answer_ids, dtype=torch.long), #vqa_answer_ids
                 "image": image
             }
-            # if self.rank == 0:
-            #     print(example)
         else:
             que = self.questions[idx]
             question_id = que["question_id"]
@@ -312,7 +319,7 @@ class VQADataset(Dataset):
                 return_attention_mask=True,
                 return_tensors='pt',
             )
-            image = image_preprocessing(que["img_path"], self.transform)
+            image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             example = {
                 'img_path': que["img_path"],
                 'question_id': question_id,
@@ -322,8 +329,7 @@ class VQADataset(Dataset):
                 'onehot_feature': question_onehot,
                 "image": image
             }
-        # if self.rank == 0:
-        #     print(example)
+        
         return example
     
     def load_questions(self):
@@ -341,6 +347,11 @@ class VQADataset(Dataset):
             for question in questions:
                 formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
                 question['img_path'] = os.path.join(self.image_path, formatted_image_id)
+                saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
+                saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
+                question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
+                
+                
                 question_type_str = self.question_type_dict[question["question"]]
                 question["question_type_str"] = question_type_str
                 question_type_idx = self.question_type_to_idx[question_type_str]
@@ -352,6 +363,12 @@ class VQADataset(Dataset):
             for question in questions:
                 formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
                 question['img_path'] = os.path.join(self.image_path, formatted_image_id)
+                saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
+                saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
+                question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
+                
+                
+                
                 # question_type_str = self.question_type_dict[question["question"]]
                 # question["question_type_str"] = question_type_str
                 # question_type_idx = self.question_type_to_idx[question_type_str]
@@ -378,9 +395,14 @@ class VQADataset(Dataset):
         annotation_path = self.image_path = getattr(self.args, f"{self.split}_annotation")
         with open(annotation_path, 'r') as file:
             annotation_list = json.load(file)["annotations"]
-        return annotation_list
+        processed_annotation = []
+        for ans in annotation_list:
+            ans_proc = prep_ans(ans['multiple_choice_answer'])
+            if ans_proc in list(self.vqa_ans_to_idx.keys()):
+                processed_annotation.append(ans)
+        return processed_annotation
     
-    def create_ann_vocal(self):
+    def create_normal_ann_vocal(self):
         examples = []
         path_files = self.args.stat_ann_list
         
@@ -407,7 +429,62 @@ class VQADataset(Dataset):
             tok2ans[tok2ans.__len__()] = ans
             ans2tok[ans] = ans2tok.__len__()
 
-        return ans2tok, tok2ans
+        return ans2tok, tok2ans, {}
+    
+    def create_hie_ann_vocal(self):
+        path_files = self.args.stat_ques_list
+        stat_ques_list = []
+        for path_file in path_files:
+            with open(path_file, 'r') as file:
+                single_questions = json.load(file)
+            stat_ques_list += single_questions['questions']
+        question_list = {}
+        for ques in stat_ques_list:
+            question_list[ques["question_id"]] = ques["question"]
+
+        examples = []
+        path_files = self.args.stat_ann_list
+        
+        for path_file in path_files:
+            with open(path_file, 'r') as file:
+                single_anns = json.load(file)
+            examples += single_anns['annotations']
+        
+            
+        ans2tok, tok2ans = {}, {}
+        
+        ans_freq_dict = {}
+        
+        for ans in examples:
+            ans_proc = prep_ans(ans['multiple_choice_answer'])
+            if ans_proc not in ans_freq_dict:
+                ans_freq_dict[ans_proc] = 1
+            else:
+                ans_freq_dict[ans_proc] += 1
+        ans_freq_filter = ans_freq_dict.copy()
+        
+        most_frequent_words = dict(sorted(ans_freq_dict.items(), key=lambda item: item[1], reverse=True)[:1000])
+        ans_freq_filter = most_frequent_words
+        
+        for ans in ans_freq_filter:
+            tok2ans[tok2ans.__len__()] = ans
+            ans2tok[ans] = ans2tok.__len__()
+            
+        question_type_map = {}
+        for ans in examples:
+            ans_proc = prep_ans(ans['multiple_choice_answer'])
+            if ans_proc in list(ans2tok.keys()):
+                ans_id = ans2tok[ans_proc]
+                quetion_str = question_list[ans["question_id"]]
+                question_type_str  = self.question_type_dict[quetion_str]
+                question_type_id = self.question_type_to_idx[question_type_str]
+                
+                if ans_id not in question_type_map:
+                    question_type_map[ans_id] = []
+                if question_type_id not in question_type_map[ans_id]:
+                    question_type_map[ans_id].append(question_type_id)
+                
+        return ans2tok, tok2ans, question_type_map
     
     def load_question_type(self):
         question_type_dict = {}
@@ -532,8 +609,14 @@ def rnn_proc_ques(ques, token_to_ix, max_token):
             break
     return ques_ix
 
-def image_preprocessing(image_path, transform):
-    image = Image.open(image_path).convert('RGB')
+def image_preprocessing(image_path, saved_image_path, transform):
+    if os.path.exists(saved_image_path):
+        image = pickle.load(open(saved_image_path, 'rb'))
+    else:
+        image = Image.open(image_path).convert('RGB')
+        pickle.dump(image, open(saved_image_path, 'wb'))
+        print(f"saving {saved_image_path}")
+    
     image = transform(image)
     return image
 
