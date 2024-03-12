@@ -421,9 +421,8 @@ class VQADataset(Dataset):
             else:
                 ans_freq_dict[ans_proc] += 1
         ans_freq_filter = ans_freq_dict.copy()
-        for ans in ans_freq_dict:
-            if ans_freq_dict[ans] <= 8:
-                ans_freq_filter.pop(ans)
+        most_frequent_words = dict(sorted(ans_freq_dict.items(), key=lambda item: item[1], reverse=True)[:1000])
+        ans_freq_filter = most_frequent_words
         
         for ans in ans_freq_filter:
             tok2ans[tok2ans.__len__()] = ans

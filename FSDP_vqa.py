@@ -98,7 +98,7 @@ def fsdp_main(rank, world_size, args):
     val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample}
     test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample}
     
-    cuda_kwargs = {'num_workers': 2,
+    cuda_kwargs = {'num_workers': 4,
                     'pin_memory': True,
                     'shuffle': False}
     train_kwargs.update(cuda_kwargs)
@@ -111,8 +111,8 @@ def fsdp_main(rank, world_size, args):
     
     
     
-    # if args.debug:
-    #     val_loader = train_loader
+    if args.debug:
+        val_loader = train_loader
     
     my_auto_wrap_policy = functools.partial(
         size_based_auto_wrap_policy, min_num_params=20000
@@ -181,10 +181,7 @@ def fsdp_main(rank, world_size, args):
             if val_accuracy > best_acc:
                 stop_epoch = 0
                 best_acc = val_accuracy
-                
                 val_final_result = collect_result(val_result, rank, epoch, "val", args)
-                
-                
                 test_result  = tester(model, rank, world_size, test_loader)
                 test_final_result = collect_result(test_result, rank, epoch, "test", args)
                 
@@ -201,7 +198,6 @@ def fsdp_main(rank, world_size, args):
         val_predictions = pd.DataFrame(val_best_result)
         val_predictions.to_csv("val_predictions.csv", index=False)
         wandb.save("val_predictions.csv")
-        
         test_predictions = pd.DataFrame(test_best_result)
         test_predictions.to_csv("test_predictions.csv", index=False)
     #     y_true = predictions['prediction']
@@ -211,6 +207,7 @@ def fsdp_main(rank, world_size, args):
         # print('saving the model')
         # torch.save(model.state_dict(), "./checkpoints/bert-chatgptv1.pt")
         print('done!')
+        torch.save(model, os.path.join(args.result_path, 'model.pth'))
     if args.wandb:
         wandb.finish()
 
