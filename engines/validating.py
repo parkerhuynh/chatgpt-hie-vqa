@@ -93,9 +93,11 @@ def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
             loss = 0.8*vqa_loss + 0.2*question_type_loss
             
             
-            vqa_pred_np = vqa_output.cpu().data.numpy()
-            vqa_pred_argmax = np.argmax(vqa_pred_np, axis=1)
-            vqa_indices = torch.tensor(vqa_pred_argmax)
+            # vqa_pred_np = vqa_output.cpu().data.numpy()
+            # vqa_pred_argmax = np.argmax(vqa_pred_np, axis=1)
+            # vqa_indices = torch.tensor(vqa_pred_argmax)
+            vqa_pred_argmax_prob, vqa_indices = torch.max(vqa_output, dim=1)
+            vqa_pred_argmax = vqa_indices.cpu().data.numpy()
             rows = torch.arange(vqa_labels.size(0))
             selected_values = vqa_labels[rows, vqa_indices]
             sum_selected_values = selected_values.sum()
