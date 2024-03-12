@@ -267,7 +267,7 @@ if __name__ == '__main__':
     
     if os.path.exists(result_path) and os.path.isdir(result_path):
         shutil.rmtree(result_path)
-     os.makedirs(result_path)   
+    os.makedirs(result_path)   
     if os.path.exists("./test_predictions.csv") and os.path.isdir("./test_predictions.csv"):
         shutil.rmtree("./test_predictions.csv")
     if os.path.exists("./val_predictions.csv") and os.path.isdir("./val_predictions.csv"):
