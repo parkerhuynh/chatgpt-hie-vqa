@@ -156,7 +156,7 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizer, loss_fn,
         vqa_loss = vqa_loss_fn(vqa_output, vqa_labels)
         question_type_loss = question_type_loss_fn(question_type_output,question_type_label)
         
-        loss = vqa_loss + question_type_loss
+        loss = 0.8*vqa_loss + 0.2*question_type_loss
         loss.backward()
         optimizer.step()
         
