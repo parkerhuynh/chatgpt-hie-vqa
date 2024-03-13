@@ -179,7 +179,7 @@ def fsdp_main(rank, world_size, args):
                 break
             val_accuracy, val_result  = validator(model,loss_fn, rank, world_size, val_loader, epoch, args)
             
-            if val_accuracy > best_acc:
+            if val_accuracy >= best_acc:
                 stop_epoch = 0
                 best_acc = val_accuracy
                 val_final_result = collect_result(val_result, rank, epoch, "val", args)
@@ -191,25 +191,24 @@ def fsdp_main(rank, world_size, args):
                     val_best_result = val_final_result
                     if args.wandb:
                         wandb.log({"best_accuracy": best_acc})
+                        val_predictions = pd.DataFrame(val_best_result)
+                        val_predictions.to_csv("val_predictions.csv", index=False)
+                        wandb.save("val_predictions.csv")
+                        print(f"number val set: {len(val_predictions)}")
+                        test_predictions = pd.DataFrame(test_best_result)
+                        test_predictions.to_csv("test_predictions.csv", index=False)
+                        print(f"number test set: {len(test_predictions)}")
+                        wandb.save("test_predictions.csv")
+                        
+                        print("save the model to wandb")
             else:
                 stop_epoch += 1
         scheduler.step()
         if rank == 0:
             print(f"Epoch {epoch+1}, LR: {scheduler.get_last_lr()[0]}")
+            for param_group in optimizer.param_groups:
+                print("Learning Rate:", param_group['lr'])
     dist.barrier()
-    if rank == 0 and args.wandb:
-        val_predictions = pd.DataFrame(val_best_result)
-        val_predictions.to_csv("val_predictions.csv", index=False)
-        wandb.save("val_predictions.csv")
-        test_predictions = pd.DataFrame(test_best_result)
-        test_predictions.to_csv("test_predictions.csv", index=False)
-    #     y_true = predictions['prediction']
-    #     y_pred = predictions['target']
-    #     # plot_confusion_matrix(y_true, y_pred)
-        wandb.save("test_predictions.csv")
-        # print('saving the model')
-        # torch.save(model.state_dict(), "./checkpoints/bert-chatgptv1.pt")
-        print('done!')
     if args.wandb:
         wandb.finish()
     dist.barrier()
@@ -230,7 +229,7 @@ if __name__ == '__main__':
                         help='input batch size for valing (default: 1000)')
     parser.add_argument('--test-batch-size', type=int, default=128, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=100 , metavar='N',
+    parser.add_argument('--epochs', type=int, default=500 , metavar='N',
                         help='number of epochs to train (default: 14)')
     parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
                         help='learning rate (default: 1.0)')

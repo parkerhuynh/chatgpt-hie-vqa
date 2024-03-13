@@ -38,9 +38,10 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizer, loss_
         ddp_loss[2] += len(vqa_labels)
         
     
-        if batch_idx % 50 == 0 and rank == 0:
-            if args.wandb:
-                wandb.log({"iter_vqa_loss": loss.item()/len(vqa_labels)})
+        
+        if args.wandb:
+            wandb.log({"iter_vqa_loss": loss.item()/len(vqa_labels)})
+        if rank == 0:
             print(f'            - [{str(batch_idx).zfill(3)}/{str(len(train_loader)).zfill(3)}]:  VQA loss: {(loss.item())/len(vqa_labels):.4f}')
     
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
@@ -99,11 +100,10 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizer, loss_fn,
         ddp_loss[4] += sum(x == y for x, y in zip(question_type_prediction, question_type_label))
         ddp_loss[5] += len(vqa_labels)
         
-        if batch_idx % 50 == 0:
-            if args.wandb:
-                wandb.log({"iter_loss": loss.item()/len(vqa_labels), "vqa_loss": vqa_loss.item()/len(vqa_labels), "question_type_loss": question_type_loss.item()/len(vqa_labels)})
-            if rank == 0:
-                print(f'            - [{str(batch_idx).zfill(3)}/{str(len(train_loader)).zfill(3)}]:  loss: {(loss.item())/len(vqa_labels):.4f}|  vqa loss: {(vqa_loss.item())/len(vqa_labels):.4f}|  questionq type loss: {(question_type_loss.item())/len(vqa_labels):.4f}')
+        if args.wandb:
+            wandb.log({"iter_loss": loss.item()/len(vqa_labels), "vqa_loss": vqa_loss.item()/len(vqa_labels), "question_type_loss": question_type_loss.item()/len(vqa_labels)})
+        if rank == 0:
+            print(f'            - [{str(batch_idx).zfill(3)}/{str(len(train_loader)).zfill(3)}]:  loss: {(loss.item())/len(vqa_labels):.4f}|  vqa loss: {(vqa_loss.item())/len(vqa_labels):.4f}|  questionq type loss: {(question_type_loss.item())/len(vqa_labels):.4f}')
     
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     if rank == 0:

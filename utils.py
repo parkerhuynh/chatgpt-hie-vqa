@@ -9,6 +9,7 @@ from sklearn.metrics import confusion_matrix
 from io import BytesIO
 from PIL import Image
 import numpy as np
+import wandb
 
 def read_json(rpath: str):
     result = []
