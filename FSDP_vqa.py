@@ -160,7 +160,7 @@ def fsdp_main(rank, world_size, args):
         print(f"Training:")
         
      
-    scheduler = StepLR(optimizer, step_size=20, gamma=args.gamma, verbose = True)
+    scheduler = StepLR(optimizer, step_size=3, gamma=args.gamma, verbose = True)
     best_acc = 0
     test_best_result = None
     val_best_result = None
@@ -207,10 +207,12 @@ def fsdp_main(rank, world_size, args):
         # print('saving the model')
         # torch.save(model.state_dict(), "./checkpoints/bert-chatgptv1.pt")
         print('done!')
-        torch.save(model, os.path.join(args.result_path, 'model.pth'))
     if args.wandb:
         wandb.finish()
-
+    dist.barrier()
+    states = model.state_dict()
+    if rank == 0:
+        torch.save(states, os.path.join(args.result_path, 'model.pth'))
     cleanup()
 if __name__ == '__main__':
     model_dict = {
@@ -219,17 +221,17 @@ if __name__ == '__main__':
     }
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--val-batch-size', type=int, default=64, metavar='N',
+    parser.add_argument('--val-batch-size', type=int, default=128, metavar='N',
                         help='input batch size for valing (default: 1000)')
-    parser.add_argument('--test-batch-size', type=int, default=64, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=128, metavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=100 , metavar='N',
                         help='number of epochs to train (default: 14)')
     parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
                         help='learning rate (default: 1.0)')
-    parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
+    parser.add_argument('--gamma', type=float, default=0.8, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
