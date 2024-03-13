@@ -35,6 +35,7 @@ size_based_auto_wrap_policy,
 enable_wrap,
 wrap,
 )
+from scheduler import LinearLR
 from models import call_model
 import random
 from torch.optim import Adam
@@ -160,7 +161,7 @@ def fsdp_main(rank, world_size, args):
         print(f"Training:")
         
      
-    scheduler = StepLR(optimizer, step_size=3, gamma=args.gamma, verbose = True)
+    scheduler = LinearLR(optimizer, start_lr=args.lr, end_lr=5e-6, num_epochs=args.epochs) #StepLR(optimizer, step_size=3, gamma=args.gamma, verbose = True)
     best_acc = 0
     test_best_result = None
     val_best_result = None
@@ -193,6 +194,8 @@ def fsdp_main(rank, world_size, args):
             else:
                 stop_epoch += 1
         scheduler.step()
+        if rank == 0:
+            print(f"Epoch {epoch+1}, LR: {scheduler.get_last_lr()[0]}")
     dist.barrier()
     if rank == 0 and args.wandb:
         val_predictions = pd.DataFrame(val_best_result)
