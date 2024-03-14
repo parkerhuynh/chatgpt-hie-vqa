@@ -7,7 +7,7 @@ MASTER_PORT=7778
 NPROC_PER_NODE=2 # Number of processes per node
 # Variables for the command
 NODE_RANK=0
-MODEL=0
+MODEL=1
 DATASET=vqav2
 
 # Run the command
@@ -18,4 +18,6 @@ CUDA_VISIBLE_DEVICES=0,1 WORLD_SIZE=$NPROC_PER_NODE python3 -m torch.distributed
     --validation_epoch 1 \
     --epochs 2 \
     --early_stop 5\
-    --wandb
+    --wandb\
+    --debug
+    

@@ -124,14 +124,13 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizer, loss_fn,
             
         if rank == 0:
             print(f'   -[{batch_idx+1}/{len(train_loader)}]: Loss: {loss.item()/len(vqa_labels):.4f}, VQA Loss: {vqa_loss.item()/len(vqa_labels):.4f}, Question Type Loss: {question_type_loss.item()/len(vqa_labels):.4f}')
-    dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     if rank == 0:
         train_loss = ddp_loss[0] / ddp_loss[5]
         train_vqa_loss = ddp_loss[1] / ddp_loss[5]
         train_question_type_loss = ddp_loss[2] / ddp_loss[5]
         vqa_accuracy = ddp_loss[3] / ddp_loss[5]
         question_type_accuracy = ddp_loss[4] / ddp_loss[5]
-        print(f'- Train Epoch {epoch}:  Average loss: {train_loss:.4f}| VQA loss: {train_vqa_loss:.4f} | Question Type Loss: {train_question_type_loss:.4f} | Question Type Accuracy: {ddp_loss[4]}/{int(ddp_loss[5])} ({100. * question_type_accuracy:.2f}%) | VQA Accuracy: {round(ddp_loss[3], 2)}/{int(ddp_loss[5])} ({100. * vqa_accuracy:.2f}%) \n')
+        print(f'- Train Epoch {epoch}:  Average loss: {train_loss:.4f}| VQA loss: {train_vqa_loss:.4f} | Question Type Loss: {train_question_type_loss:.4f} | Question Type Accuracy: {ddp_loss[4]}/{int(ddp_loss[5])} ({100. * question_type_accuracy:.2f}%) | VQA Accuracy: {ddp_loss[3].item()}/{int(ddp_loss[5])} ({100. * vqa_accuracy:.2f}%) \n')
         
         if args.wandb:
             wandb.log({"epoch":epoch,

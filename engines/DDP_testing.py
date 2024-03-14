@@ -49,7 +49,7 @@ def hie_tester(model, rank, world_size, test_loader):
         for batch_idx, batch in enumerate(test_loader):  # Assuming question_id is part of your dataloader
             question_id = batch['question_id'].cuda()
             rnn_questions = batch['onehot_feature'].cuda()
-            images = batch['image'].to(rank)
+            images = batch['image'].cuda()
             bert_questions = batch['bert_input_ids'].cuda()
             bert_attend_mask_questions = batch['bert_attention_mask'].cuda()
             

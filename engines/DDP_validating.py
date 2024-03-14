@@ -107,9 +107,9 @@ def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
             
             for ques_id, vqa_pres, question_type_pres in zip(question_id, vqa_indices, question_type_predictions):
                 item = {
-                    "question_id": ques_id,
-                    "vqa_prediction": idx_to_vqa_ans[str(vqa_pres)],
-                    "question_prediction": idx_to_question_type[question_type_pres]
+                    "question_id": ques_id.item(),
+                    "vqa_prediction": idx_to_vqa_ans[str(vqa_pres.item())],
+                    "question_prediction": idx_to_question_type[question_type_pres.item()]
                     }
                 results.append(item)
             
@@ -126,7 +126,7 @@ def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
         if rank == 0:
             print(f'- Val Epoch {epoch}:  Average loss: {val_loss:.4f}|\
                 VQA loss: {val_vqa_loss:.4f} | Question Type Loss: {val_question_type_loss:.4f} |\
-                Question Type Accuracy: {ddp_loss[4]}/{int(ddp_loss[5])} ({100. * question_type_accuracy:.2f}%) | VQA Accuracy: {ddp_loss[3]}/{int(ddp_loss[5])} ({100. * vqa_accuracy:.2f}%) \n')
+                Question Type Accuracy: {ddp_loss[4]}/{int(ddp_loss[5])} ({100. * question_type_accuracy:.2f}%) | VQA Accuracy: {ddp_loss[3].item()}/{int(ddp_loss[5])} ({100. * vqa_accuracy:.2f}%) \n')
             if args.wandb:
                 wandb.log({"epoch":epoch,
                 "val_loss": val_loss,

@@ -35,6 +35,7 @@ from PIL import Image
 import numpy as np
 import glob
 import shutil
+os.environ["#wandb_START_METHOD"] = "thread"
 def main(args):
     print("hello")
     init_distributed_mode(args)
@@ -94,9 +95,10 @@ def main(args):
     val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample}
     test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample}
     
-    cuda_kwargs = {'num_workers': 4,
-                    'pin_memory': True,
-                    'shuffle': False}
+    cuda_kwargs = {
+        # 'num_workers': 4,
+        # 'pin_memory': True,
+        'shuffle': False}
     train_kwargs.update(cuda_kwargs)
     val_kwargs.update(cuda_kwargs)
     test_kwargs.update(cuda_kwargs)
@@ -199,11 +201,11 @@ if __name__ == '__main__':
     }
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=512, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--val-batch-size', type=int, default=512, metavar='N',
+    parser.add_argument('--val-batch-size', type=int, default=64, metavar='N',
                         help='input batch size for valing (default: 1000)')
-    parser.add_argument('--test-batch-size', type=int, default=512, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=64, metavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=500 , metavar='N',
                         help='number of epochs to train (default: 14)')
