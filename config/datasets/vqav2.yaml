@@ -17,7 +17,7 @@ val_image_path: "/home/ndhuynh/data/vqav2/val2014"
 test_image_path: "/home/ndhuynh/data/vqav2/test2015"
 
 # answer_dict: "./datasets/hie_answer_dicts_vqav2.json"
-answer_dict: "./datasets/answer_dicts_vqav2.json"
+# answer_dict: "./datasets/answer_dicts_vqav2.json"
 question_dict: "./datasets/question_dicts_vqav2.pkl"
 question_type: "./datasets/train_question_type_gpt_v6_vqav2.json"
 # test_annotation : '/home/ndhuynh/data/simpsonsvqa/v1_Annotation_Test_Private_110496_simpsons_vqa.json'

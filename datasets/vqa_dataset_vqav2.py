@@ -253,7 +253,7 @@ class VQADataset(Dataset):
 
     def __len__(self):
         if self.args.debug:
-            return 128
+            return 16
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
     def __getitem__(self, idx):
@@ -288,7 +288,7 @@ class VQADataset(Dataset):
             
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             
-            ans_iter = proc_ans(ann, self.vqa_ans_to_idx)
+            ans_iter, answer_str = proc_ans(ann, self.vqa_ans_to_idx)
             example = {
                 'img_path': que["img_path"],
                 'question_id': question_id,
@@ -300,7 +300,7 @@ class VQADataset(Dataset):
                 'question_type_label': torch.tensor(question_type_ids, dtype=torch.long),
                 # 'answer_type_str': answer_type_str,
                 # 'answer_type_label': torch.tensor(answer_type_ids, dtype=torch.long),
-                'vqa_answer_str': vqa_answer_str,
+                'vqa_answer_str': answer_str,
                 'vqa_answer_label': torch.from_numpy(ans_iter) , #torch.tensor(vqa_answer_ids, dtype=torch.long), #vqa_answer_ids
                 "image": image
             }
@@ -622,29 +622,28 @@ def image_preprocessing(image_path, saved_image_path, transform):
 def proc_ans(ans, ans_to_ix):
     ans_score = np.zeros(ans_to_ix.__len__(), np.float32)
     ans_prob_dict = {}
-
+    answer_str = "$$`"
     for ans_ in ans['answers']:
         ans_proc = prep_ans(ans_['answer'])
         if ans_proc not in ans_prob_dict:
             ans_prob_dict[ans_proc] = 1
         else:
             ans_prob_dict[ans_proc] += 1
-
+    
     for ans_ in ans_prob_dict:
         if ans_ in ans_to_ix:
+            answer_str += f"{ans_to_ix[ans_]} {get_score(ans_prob_dict[ans_])} {ans_} ||"
             ans_score[ans_to_ix[ans_]] = get_score(ans_prob_dict[ans_])
 
-    return ans_score
+    return ans_score, answer_str
 
 def get_score(occur):
     if occur == 0:
         return .0
     elif occur == 1:
-        return .3
+        return round(1/3,2)
     elif occur == 2:
-        return .6
-    elif occur == 3:
-        return .9
-    else:
-        return 1.
+        return round(2/3,2)
+    elif occur >= 3:
+        return 1
     

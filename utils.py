@@ -10,6 +10,7 @@ from io import BytesIO
 from PIL import Image
 import numpy as np
 import wandb
+import torch
 
 def read_json(rpath: str):
     result = []
@@ -90,3 +91,76 @@ def list_files(directory, extensions):
                 if "wandb" not in full_path:
                     matches.append(os.path.join(root, filename))
     return matches
+
+
+
+#############################################################################################
+
+def setup_for_printing_everywhere():
+    """
+    This function ensures printing is enabled on all devices in a distributed setting.
+    """
+    import builtins as __builtin__
+    # Save the original built-in print function
+    builtin_print = __builtin__.print
+
+    # Override the built-in print with a new version that always prints
+    def print(*args, **kwargs):
+        # Call the original saved print function
+        builtin_print(*args, **kwargs)
+
+    # Replace the built-in print function with the overridden version
+    __builtin__.print = print
+    
+def setup_for_distributed(is_master):
+    """
+    This function disables printing when not in master process
+    """
+    import builtins as __builtin__
+    builtin_print = __builtin__.print
+
+    def print(*args, **kwargs):
+        force = kwargs.pop('force', False)
+        if is_master or force:
+            builtin_print(*args, **kwargs)
+
+    __builtin__.print = print
+    
+def init_distributed_mode(args):
+    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        args.rank = int(os.environ["RANK"])
+        args.world_size = int(os.environ['WORLD_SIZE'])
+        args.gpu = int(os.environ['LOCAL_RANK'])
+    elif 'SLURM_PROCID' in os.environ:
+        args.rank = int(os.environ['SLURM_PROCID'])
+        args.gpu = args.rank % torch.cuda.device_count()
+    else:
+        print('Not using distributed mode')
+        args.distributed = False
+        return
+
+    args.distributed = True
+
+    torch.cuda.set_device(args.gpu)
+    args.dist_backend = 'nccl'
+    print('| distributed init (rank {}): {}'.format(
+        args.rank, args.dist_url), flush=True)
+    torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+                                         world_size=args.world_size, rank=args.rank)
+    torch.distributed.barrier()
+    setup_for_printing_everywhere()
+
+
+def is_dist_avail_and_initialized():
+    if not dist.is_available():
+        return False
+    if not dist.is_initialized():
+        return False
+    return True
+
+
+  
+def get_world_size():
+    if not is_dist_avail_and_initialized():
+        return 1
+    return dist.get_world_size()
