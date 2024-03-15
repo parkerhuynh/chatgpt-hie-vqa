@@ -7,8 +7,6 @@ import torch.nn.functional as F
 
 @torch.no_grad()
 def normal_tester(model, rank, world_size, test_loader):
-    if rank == 0:
-        print("    - Testing")
     idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans
     model.eval()
     results = []
@@ -27,7 +25,7 @@ def normal_tester(model, rank, world_size, test_loader):
             local_question_ids = question_id.cpu().numpy().tolist()
             
             if batch_idx % 50 == 0 and rank == 0:
-                print(f'            - [{str(batch_idx).zfill(3)}/{str(len(test_loader)).zfill(3)}]')
+                print(f'     - Testing | [{str(batch_idx).zfill(3)}/{str(len(test_loader)).zfill(3)}]')
             for ques_id, pres in zip(local_question_ids, local_preds):
                 item = {
                     "question_id": ques_id,
@@ -39,8 +37,6 @@ def normal_tester(model, rank, world_size, test_loader):
 
 @torch.no_grad()
 def hie_tester(model, rank, world_size, test_loader):
-    if rank == 0:
-        print("    - Testing")
     idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans
     idx_to_question_type = test_loader.dataset.idx_to_question_type
     model.eval()

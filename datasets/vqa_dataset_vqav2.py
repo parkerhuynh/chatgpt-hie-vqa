@@ -250,19 +250,20 @@ class VQADataset(Dataset):
         
         if self.split in ["train", "val"]:
             self.annotations = self.load_annotations()
+            random.shuffle(self.annotations)
         self.token_size = len(self.token_to_ix)
         self.vqa_output_dim = len(self.vqa_ans_to_idx.keys())
-        # random.shuffle(self.annotations)
 
     def __len__(self):
         if self.args.debug:
-            return 32
+            return 600
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
     def __getitem__(self, idx):
         
         
         if self.split in ["train", "val"]:
+            
             
             ann = self.annotations[idx]
             question_id = ann["question_id"]
@@ -379,16 +380,15 @@ class VQADataset(Dataset):
         return token_to_ix, pretrained_emb
     
     def load_annotations(self):
-        annotation_path = getattr(self.args, f"{self.split}_annotation")
+        annotation_path = self.image_path = getattr(self.args, f"{self.split}_annotation")
         with open(annotation_path, 'r') as file:
             annotation_list = json.load(file)["annotations"]
         processed_annotation = []
-        # for ans in annotation_list:
-        #     ans_iter, answer_str = proc_ans(ans, self.vqa_ans_to_idx)
-        #     ans["ans_iter"] = ans_iter
-        #     ans["answer_str"] = answer_str
-        #     processed_annotation.append(ans)
-        return annotation_list
+        for ans in annotation_list:
+            ans_proc = prep_ans(ans['multiple_choice_answer'])
+            if ans_proc in list(self.vqa_ans_to_idx.keys()):
+                processed_annotation.append(ans)
+        return processed_annotation
     
     def create_normal_ann_vocal(self):
         examples = []
@@ -458,17 +458,19 @@ class VQADataset(Dataset):
             
         question_type_map = {}
         for ans in examples:
-            ans_proc = prep_ans(ans['multiple_choice_answer'])
-            if ans_proc in list(ans2tok.keys()):
-                ans_id = ans2tok[ans_proc]
-                quetion_str = question_list[ans["question_id"]]
-                question_type_str  = self.question_type_dict[quetion_str]
-                question_type_id = self.question_type_to_idx[question_type_str]
-                
-                if ans_id not in question_type_map:
-                    question_type_map[ans_id] = []
-                if question_type_id not in question_type_map[ans_id]:
-                    question_type_map[ans_id].append(question_type_id)
+            unique_answers = {answer['answer'] for answer in ans['answers']}
+            for answer_str in unique_answers:
+                ans_proc = prep_ans(answer_str)
+                if ans_proc in list(ans2tok.keys()):
+                    ans_id = ans2tok[ans_proc]
+                    quetion_str = question_list[ans["question_id"]]
+                    question_type_str  = self.question_type_dict[quetion_str]
+                    question_type_id = self.question_type_to_idx[question_type_str]
+                    
+                    if ans_id not in question_type_map:
+                        question_type_map[ans_id] = []
+                    if question_type_id not in question_type_map[ans_id]:
+                        question_type_map[ans_id].append(question_type_id)
                 
         return ans2tok, tok2ans, question_type_map
     
@@ -596,13 +598,13 @@ def rnn_proc_ques(ques, token_to_ix, max_token):
     return ques_ix
 
 def image_preprocessing(image_path, saved_image_path, transform):
-    # if os.path.exists(saved_image_path):
-    #     image = pickle.load(open(saved_image_path, 'rb'))
-    # else:
-    #     image = Image.open(image_path).convert('RGB')
-    #     pickle.dump(image, open(saved_image_path, 'wb'))
-    #     print(f"saving {saved_image_path}")
-    image = Image.open(image_path).convert('RGB')
+    if os.path.exists(saved_image_path):
+        image = pickle.load(open(saved_image_path, 'rb'))
+    else:
+        image = Image.open(image_path).convert('RGB')
+        pickle.dump(image, open(saved_image_path, 'wb'))
+        print(f"saving {saved_image_path}")
+    # image = Image.open(image_path).convert('RGB')
     image = transform(image)
     return image
 

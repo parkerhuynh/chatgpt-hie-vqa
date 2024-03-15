@@ -3,7 +3,7 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 import torch.nn as nn
 import torchvision.models as models
-
+from torch.nn.utils.weight_norm import weight_norm
     
 class ImageEncoder(nn.Module):
 
@@ -58,8 +58,8 @@ class LSTM_VGG(nn.Module):
             )
         self.mlp = nn.Sequential(
                 nn.Linear(args.image_feature_output, 1000),
-                nn.Dropout(p=0.5),
-                nn.Tanh(),
+                nn.Dropout(p=0.5, inplace=True),
+                nn.ReLU(),
                 nn.Linear(1000, ans_vocab_size))
 
     def forward(self, image, question):
@@ -68,5 +68,5 @@ class LSTM_VGG(nn.Module):
         question = self.question_encoder(question)
         combine  = torch.mul(image,question)
         output = self.mlp(combine)
-        output = torch.sigmoid(output)
+        # output = torch.sigmoid(output)
         return output

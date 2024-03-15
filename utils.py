@@ -41,11 +41,9 @@ def collect_result(result, rank, epoch, split, args):
         result = result_new
         result_path = os.path.join(args.result_path, f"epoch_{epoch}_{split}.json")
         json.dump(result, open(result_path, 'w'), indent=4)
-        print(f"saving {result_path}")
+        print(f'==> {split} | total number of {split} set: {len(result)} | saving {result_path} |')
 
     dist.barrier()
-    if rank == 0:
-        print(f"total number of {split} set: {len(result)}")
     return result
 
 def plot_confusion_matrix(y_true, y_pred):

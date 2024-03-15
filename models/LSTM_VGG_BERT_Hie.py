@@ -68,7 +68,6 @@ class CustomLayer(nn.Module):
         question_type_output = F.softmax(question_type_output, dim=-1)
         current_device = question_type_output.device
         bz, _ = question_type_output.size()
-
         question_type_matrix = self.QuestionTypeMatrix.to(current_device).unsqueeze(0).expand(bz, -1, -1)
         question_type_output = question_type_output.unsqueeze(1)
         
@@ -85,13 +84,13 @@ class CustomLayer(nn.Module):
     
     
     
-class LSTM_VGG_Hie(nn.Module):
+class LSTM_VGG_BERT_Hie(nn.Module):
 
     def __init__(self, args, question_vocab_size, ans_vocab_size, question_type_map, question_type_output_dim):
         """
         Fusing Image feature and question feature using Full Connected Layer
         """
-        super(LSTM_VGG_Hie, self).__init__()
+        super(LSTM_VGG_BERT_Hie, self).__init__()
         self.args = args
         self.image_encoder = ImageEncoder(output_size = args.image_feature_output)
 
@@ -103,17 +102,21 @@ class LSTM_VGG_Hie(nn.Module):
         
         
         self.QuestionType = QuestionType(question_type_output_dim)
+        
         self.mlp_1 = nn.Sequential(
                 nn.Linear(args.image_feature_output, 1000),
-                nn.Dropout(p=0.5),
-                nn.Tanh(),
+                nn.Dropout(p=0.5, inplace=True),
+                nn.ReLU(),
                 nn.Linear(1000, ans_vocab_size))
+        
         self.CustomLayer = CustomLayer(question_type_map, ans_vocab_size, question_type_output_dim)
+        
         self.mlp_2 = nn.Sequential(
                 nn.Linear(ans_vocab_size, 1000),
-                nn.Dropout(p=0.5),
-                nn.Tanh(),
+                nn.Dropout(p=0.5, inplace=True),
+                nn.ReLU(),
                 nn.Linear(1000, ans_vocab_size))
+        
     def forward(self, image, question_rnn, question_bert, bert_attend_mask_questions):
         image = self.image_encoder(image)
         question_rnn = self.WordEmbedding(question_rnn)
@@ -122,7 +125,8 @@ class LSTM_VGG_Hie(nn.Module):
         vqa_output = self.mlp_1(combine)
         
         question_type_output = self.QuestionType(question_bert, bert_attend_mask_questions)
-        output = self.CustomLayer(question_type_output, vqa_output)
-        output = self.mlp_2(output)
-        output = torch.sigmoid(output)
-        return output, question_type_output
+        vqa_output = self.CustomLayer(question_type_output, vqa_output)
+        vqa_output = self.mlp_2(vqa_output)
+        # output = torch.sigmoid(output)
+        return vqa_output, question_type_output
+        # return question_type_output

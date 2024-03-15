@@ -29,12 +29,13 @@ warnings.filterwarnings('ignore', category=RuntimeWarning)
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix
+import torch.optim as optim
 from io import BytesIO
 from PIL import Image
 import numpy as np
 import glob
 import shutil
+from loss_fn import instance_bce_with_logits
 os.environ["#wandb_START_METHOD"] = "thread"
 def main(args):
     print("hello")
@@ -48,7 +49,7 @@ def main(args):
             config=vars(args))
     device = torch.device(args.device)
     world_size = get_world_size()
-    
+    print(f"wordsize: {world_size}")
     if args.batch_size > 0:
         args.batch_size = int(float(args.batch_size)/world_size)
     if args.val_batch_size > 0:
@@ -113,12 +114,30 @@ def main(args):
         model = VQA_model(args = args,
                         question_vocab_size = train_dataset.token_size,
                         ans_vocab_size = train_dataset.vqa_output_dim).to(device)
+        
+    if "hie" in args.model_name.lower():
+        question_type_params = list(model.QuestionType.parameters())
+        base_params = [p for n, p in model.named_parameters() if "QuestionType" not in n]
+        
+        optimizer_for_question_type = AdamW(question_type_params, lr=args.qt_lr)
+        scheduler_for_question_type = LinearLR(optimizer_for_question_type, start_lr=args.qt_lr, end_lr=args.qt_lr/10, num_epochs=args.epochs)
+        
+        optimizer_for_rest = optim.Adam(base_params, lr=args.lr)
+        scheduler_for_rest = LinearLR(optimizer_for_rest, start_lr=args.lr, end_lr=args.lr/10, num_epochs=args.epochs)
+        
+        optimizers = [optimizer_for_question_type, optimizer_for_rest]
+        
+    else:
+        optimizer = AdamW(model.parameters(), lr=args.lr)
+        scheduler = LinearLR(optimizer, start_lr=args.lr, end_lr=args.lr/100, num_epochs=args.epochs)
+        optimizers = [optimizer, None]
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu]).to(device)
-    optimizer = AdamW(model.parameters(), lr=args.lr)
-    vqa_loss_fn = torch.nn.BCELoss(reduction='sum').to(device)
-    question_type_loss_fn = torch.nn.CrossEntropyLoss(reduction='sum').to(device)
+    
+        
+    vqa_loss_fn = instance_bce_with_logits
+    question_type_loss_fn = torch.nn.CrossEntropyLoss().cuda()
     loss_fn = [vqa_loss_fn, question_type_loss_fn]
-    scheduler = LinearLR(optimizer, start_lr=args.lr, end_lr=1e-6, num_epochs=args.epochs)
+    
     if rank == 0:
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -138,21 +157,26 @@ def main(args):
     if rank == 0:
         print("Start training")
     if args.debug:
+        val_loader = train_loader
         test_loader = train_loader
     trainer, validator, tester = call_engines(args)
     for epoch in range(1, args.epochs + 1):
         if rank == 0:
             print(f"------------------------- Epoch {str(epoch).zfill(3)} -------------------------")
-            print(f"LR: {scheduler.get_last_lr()[0]}")
+            if "hie" in args.model_name.lower():
+                print(f"QT LR: {scheduler_for_question_type.get_last_lr()[0]}")
+                print(f"VQA LR: {scheduler_for_rest.get_last_lr()[0]}")
+            else:
+                print(f"LR: {scheduler.get_last_lr()[0]}")
             
-        trainer(args, model, rank, world_size, train_loader, optimizer, loss_fn, epoch, sampler=train_sample)
+        trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn, epoch, sampler=train_sample)
         if epoch >= args.validation_epoch:
             if stop_epoch == args.early_stop:
                 print("STOP TRAINING")
                 break
             val_accuracy, val_result  = validator(model,loss_fn, rank, world_size, val_loader, epoch, args)
             
-            if val_accuracy >= best_acc:
+            if val_accuracy > best_acc:
                 stop_epoch = 0
                 best_acc = val_accuracy
                 val_final_result = collect_result(val_result, rank, epoch, "val", args)
@@ -178,7 +202,11 @@ def main(args):
                         torch.save(states, os.path.join(args.result_path, 'model.pth'))
             else:
                 stop_epoch += 1
-        scheduler.step()
+        if "hie" in args.model_name.lower():
+            scheduler_for_question_type.step()
+            scheduler_for_rest.step()
+        else:
+            scheduler.step()
         
             
         
@@ -190,7 +218,7 @@ def main(args):
 if __name__ == '__main__':
     model_dict = {
         0: "LSTM_VGG",
-        1: "LSTM_VGG_Hie"
+        1: "LSTM_VGG_BERT_Hie"
     }
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -202,7 +230,9 @@ if __name__ == '__main__':
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=500 , metavar='N',
                         help='number of epochs to train (default: 14)')
-    parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
+    parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
+                        help='learning rate (default: 1.0)')
+    parser.add_argument('--qt_lr', type=float, default=1e-5, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.8, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
@@ -225,6 +255,8 @@ if __name__ == '__main__':
     parser.add_argument('--dist_url', default='env://')
     parser.add_argument('--world_size', default=1, type=int)
     parser.add_argument('--device', default='cuda')
+    parser.add_argument('--loss_weight', type=float, default=0.5, metavar='LR',
+                        help='learning rate (default: 1.0)')
     args = parser.parse_args()
 
     #Check data path
@@ -237,7 +269,7 @@ if __name__ == '__main__':
     result_path = f"./results/{args.dataset}/{args.model_name}"
     args.temp_result_path = temp_result_path
     args.result_path = result_path
-    if "hie" in args.model_name:
+    if "hie" in args.model_name.lower():
         args.answer_dict = f"./datasets/hie_answer_dicts_{args.dataset}.json"
     else:
         args.answer_dict = f"./datasets/answer_dicts_{args.dataset}.json"
