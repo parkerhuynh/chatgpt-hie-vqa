@@ -256,7 +256,7 @@ class VQADataset(Dataset):
 
     def __len__(self):
         if self.args.debug:
-            return 600
+            return 2000
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
     def __getitem__(self, idx):
