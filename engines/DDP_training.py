@@ -84,6 +84,7 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizer, loss_fn,
     
     for batch_idx, batch in enumerate(train_loader):
         optimizer.zero_grad()
+        
         images = batch['image'].cuda()
         rnn_questions = batch['onehot_feature'].cuda()
         vqa_labels = batch['vqa_answer_label'].cuda()
@@ -95,7 +96,9 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizer, loss_fn,
         vqa_loss = vqa_loss_fn(vqa_output, vqa_labels)
         question_type_loss = question_type_loss_fn(question_type_output, question_type_label)
         
-        loss = 0.8*vqa_loss + 0.2*question_type_loss
+        lambda_weight = 0.5
+        loss = lambda_weight * vqa_loss + (1 - lambda_weight) * question_type_loss
+        # loss = vqa_loss
         loss.backward()
         optimizer.step()
         
@@ -124,6 +127,7 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizer, loss_fn,
             
         if rank == 0:
             print(f'   -[{batch_idx+1}/{len(train_loader)}]: Loss: {loss.item()/len(vqa_labels):.4f}, VQA Loss: {vqa_loss.item()/len(vqa_labels):.4f}, Question Type Loss: {question_type_loss.item()/len(vqa_labels):.4f}')
+    dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     if rank == 0:
         train_loss = ddp_loss[0] / ddp_loss[5]
         train_vqa_loss = ddp_loss[1] / ddp_loss[5]

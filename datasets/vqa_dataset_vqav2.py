@@ -162,11 +162,16 @@ class VQADataset(Dataset):
         
         normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
         if split == "train":
+            # self.transform = transforms.Compose([
+            #     transforms.RandomResizedCrop(args.img_size, scale=(0.5, 1.0),
+            #                                 interpolation=Image.BICUBIC),
+            #     RandomAugment(2, 7, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
+            #                                         'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
+            #     transforms.ToTensor(),
+            #     normalize,
+            # ])
             self.transform = transforms.Compose([
-                transforms.RandomResizedCrop(args.img_size, scale=(0.5, 1.0),
-                                            interpolation=Image.BICUBIC),
-                RandomAugment(2, 7, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
-                                                    'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
+                transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
                 transforms.ToTensor(),
                 normalize,
             ])
@@ -204,8 +209,6 @@ class VQADataset(Dataset):
         self.question_type_dict = self.load_question_type()
         
         
-        # with open('/home/ndhuynh/github/HieVQA/dataset/super_answer_type_simpsons.json', 'r') as file:
-        #     self.super_answer_types = json.load(file)
         if self.split in  ["val", "test"]:
             self.token_to_ix, self.pretrained_emb = pickle.load(open(self.args.question_dict, 'rb'))
             if self.rank == 0:
@@ -241,7 +244,7 @@ class VQADataset(Dataset):
 
                 if self.rank == 0:
                     print(f"    - {self.split} : Created vqa answer vocabulary")
-            
+        
         self.question_type_output_dim = len(self.question_type_to_idx.keys())
            
         
@@ -253,7 +256,7 @@ class VQADataset(Dataset):
 
     def __len__(self):
         if self.args.debug:
-            return 16
+            return 32
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
     def __getitem__(self, idx):
@@ -279,16 +282,9 @@ class VQADataset(Dataset):
                 return_attention_mask=True,
                 return_tensors='pt',
             )
-            
-            vqa_answer_str = ann["multiple_choice_answer"]
-            # vqa_answer_ids = self.vqa_ans_to_idx[vqa_answer_str]
-            
-            # answer_type_str = self.super_answer_types[original_vqa_answer_str]
-            # answer_type_ids = self.question_type_to_idx[answer_type_str]
-            
+            ans_iter, answer_str = proc_ans(ann, self.vqa_ans_to_idx)
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             
-            ans_iter, answer_str = proc_ans(ann, self.vqa_ans_to_idx)
             example = {
                 'img_path': que["img_path"],
                 'question_id': question_id,
@@ -298,10 +294,8 @@ class VQADataset(Dataset):
                 'onehot_feature': question_onehot,
                 'question_type_str': question_type_str,
                 'question_type_label': torch.tensor(question_type_ids, dtype=torch.long),
-                # 'answer_type_str': answer_type_str,
-                # 'answer_type_label': torch.tensor(answer_type_ids, dtype=torch.long),
                 'vqa_answer_str': answer_str,
-                'vqa_answer_label': torch.from_numpy(ans_iter) , #torch.tensor(vqa_answer_ids, dtype=torch.long), #vqa_answer_ids
+                'vqa_answer_label': torch.from_numpy(ans_iter) ,
                 "image": image
             }
         else:
@@ -329,7 +323,7 @@ class VQADataset(Dataset):
                 'onehot_feature': question_onehot,
                 "image": image
             }
-        
+            
         return example
     
     def load_questions(self):
@@ -366,13 +360,6 @@ class VQADataset(Dataset):
                 saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
                 saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
                 question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
-                
-                
-                
-                # question_type_str = self.question_type_dict[question["question"]]
-                # question["question_type_str"] = question_type_str
-                # question_type_idx = self.question_type_to_idx[question_type_str]
-                # question["question_type"] = question_type_idx
                 question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
                 processed_questions.append(question) 
         return processed_questions
@@ -392,15 +379,16 @@ class VQADataset(Dataset):
         return token_to_ix, pretrained_emb
     
     def load_annotations(self):
-        annotation_path = self.image_path = getattr(self.args, f"{self.split}_annotation")
+        annotation_path = getattr(self.args, f"{self.split}_annotation")
         with open(annotation_path, 'r') as file:
             annotation_list = json.load(file)["annotations"]
         processed_annotation = []
-        for ans in annotation_list:
-            ans_proc = prep_ans(ans['multiple_choice_answer'])
-            if ans_proc in list(self.vqa_ans_to_idx.keys()):
-                processed_annotation.append(ans)
-        return processed_annotation
+        # for ans in annotation_list:
+        #     ans_iter, answer_str = proc_ans(ans, self.vqa_ans_to_idx)
+        #     ans["ans_iter"] = ans_iter
+        #     ans["answer_str"] = answer_str
+        #     processed_annotation.append(ans)
+        return annotation_list
     
     def create_normal_ann_vocal(self):
         examples = []
@@ -423,7 +411,6 @@ class VQADataset(Dataset):
         ans_freq_filter = ans_freq_dict.copy()
         most_frequent_words = dict(sorted(ans_freq_dict.items(), key=lambda item: item[1], reverse=True)[:1000])
         ans_freq_filter = most_frequent_words
-        
         for ans in ans_freq_filter:
             tok2ans[tok2ans.__len__()] = ans
             ans2tok[ans] = ans2tok.__len__()
@@ -609,13 +596,13 @@ def rnn_proc_ques(ques, token_to_ix, max_token):
     return ques_ix
 
 def image_preprocessing(image_path, saved_image_path, transform):
-    if os.path.exists(saved_image_path):
-        image = pickle.load(open(saved_image_path, 'rb'))
-    else:
-        image = Image.open(image_path).convert('RGB')
-        pickle.dump(image, open(saved_image_path, 'wb'))
-        print(f"saving {saved_image_path}")
-    
+    # if os.path.exists(saved_image_path):
+    #     image = pickle.load(open(saved_image_path, 'rb'))
+    # else:
+    #     image = Image.open(image_path).convert('RGB')
+    #     pickle.dump(image, open(saved_image_path, 'wb'))
+    #     print(f"saving {saved_image_path}")
+    image = Image.open(image_path).convert('RGB')
     image = transform(image)
     return image
 

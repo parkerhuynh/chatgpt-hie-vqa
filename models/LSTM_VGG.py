@@ -24,34 +24,22 @@ class ImageEncoder(nn.Module):
     def forward(self, image):
         image = self.extractor(image)
         image_embedding = self.fflayer(image)
+        norm = image_embedding.norm(p=2, dim=1, keepdim=True)
+        image_embedding = image_embedding.div(norm)
         return image_embedding
-
-# class QuestionEmbedding(nn.Module):
-#     def __init__(self, word_embedding_size, hidden_size):
-#         super(QuestionEmbedding, self).__init__()
-#         self.lstm = nn.LSTM(word_embedding_size, hidden_size, num_layers=2, batch_first=True)
-#         self.fc = nn.Linear(hidden_size, 1024)
-
-#     def forward(self, input_data):
-#         _, (hidden, _) = self.lstm(input_data)
-#         last_hidden = hidden[-1]
-#         embedding = self.fc(last_hidden)
-#         return embedding
 
 class QuestionEmbedding(nn.Module):
     def __init__(self, word_embedding_size, hidden_size):
         super(QuestionEmbedding, self).__init__()
-        self.gru = nn.GRU(word_embedding_size, hidden_size, num_layers= 1, batch_first=True)
+        self.lstm = nn.LSTM(word_embedding_size, hidden_size, num_layers=2, batch_first=True)
         self.fc = nn.Linear(hidden_size, 1024)
-        self.tanh = nn.Tanh()
 
     def forward(self, input_data):
-        output, hidden = self.gru(input_data)
-        last_hidden = hidden.squeeze(0)
+        _, (hidden, _) = self.lstm(input_data)
+        last_hidden = hidden[-1]
         embedding = self.fc(last_hidden)
-        embedding = self.tanh(embedding)
-
         return embedding
+
     
 class LSTM_VGG(nn.Module):
 

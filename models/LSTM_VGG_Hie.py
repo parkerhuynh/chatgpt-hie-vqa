@@ -4,6 +4,7 @@ import torchvision.transforms as transforms
 import torch.nn as nn
 import torchvision.models as models
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW
+import torch.nn.functional as F
     
 class ImageEncoder(nn.Module):
 
@@ -11,8 +12,8 @@ class ImageEncoder(nn.Module):
         super(ImageEncoder, self).__init__()
         self.extractor = models.vgg16(pretrained=True)
         # freeze feature extractor (VGGNet) parameters
-        # for param in self.extractor.parameters():
-        #     param.requires_grad = False
+        for param in self.extractor.parameters():
+            param.requires_grad = False
 
         extactor_fc_layers = list(self.extractor.classifier.children())[:-1]
         self.extractor.classifier = nn.Sequential(*extactor_fc_layers)
@@ -55,14 +56,16 @@ class QuestionType(nn.Module):
 class CustomLayer(nn.Module):
     def __init__(self, question_type_map_dict, ans_vocab_size, question_type_output_dim):
         super(CustomLayer, self).__init__()
-        self.QuestionTypeMatrix = torch.zeros((question_type_output_dim, ans_vocab_size), dtype=torch.float32)
+        QuestionTypeMatrix = torch.zeros((question_type_output_dim, ans_vocab_size), dtype=torch.float32)
         for answer_index, question_types in question_type_map_dict.items():
             answer_index = int(answer_index)
             for question_type in question_types:
-                self.QuestionTypeMatrix[question_type, answer_index] = 1
+                QuestionTypeMatrix[question_type, answer_index] = 1
+        self.register_buffer('QuestionTypeMatrix', QuestionTypeMatrix)
             
 
     def forward(self, question_type_output, vqa_output):
+        question_type_output = F.softmax(question_type_output, dim=-1)
         current_device = question_type_output.device
         bz, _ = question_type_output.size()
 
@@ -106,11 +109,11 @@ class LSTM_VGG_Hie(nn.Module):
                 nn.Tanh(),
                 nn.Linear(1000, ans_vocab_size))
         self.CustomLayer = CustomLayer(question_type_map, ans_vocab_size, question_type_output_dim)
-        # self.mlp_2 = nn.Sequential(
-        #         nn.Linear(ans_vocab_size, 1000),
-        #         nn.Dropout(p=0.5),
-        #         nn.Tanh(),
-        #         nn.Linear(1000, ans_vocab_size))
+        self.mlp_2 = nn.Sequential(
+                nn.Linear(ans_vocab_size, 1000),
+                nn.Dropout(p=0.5),
+                nn.Tanh(),
+                nn.Linear(1000, ans_vocab_size))
     def forward(self, image, question_rnn, question_bert, bert_attend_mask_questions):
         image = self.image_encoder(image)
         question_rnn = self.WordEmbedding(question_rnn)
@@ -120,6 +123,6 @@ class LSTM_VGG_Hie(nn.Module):
         
         question_type_output = self.QuestionType(question_bert, bert_attend_mask_questions)
         output = self.CustomLayer(question_type_output, vqa_output)
-        # output = self.mlp_2(output)
+        output = self.mlp_2(output)
         output = torch.sigmoid(output)
         return output, question_type_output

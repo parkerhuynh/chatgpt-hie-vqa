@@ -91,17 +91,10 @@ def main(args):
     val_sample = DistributedSampler(val_dataset, rank=rank, num_replicas=world_size)
     test_sample = DistributedSampler(test_dataset, rank=rank, num_replicas=world_size)
     
-    train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample}
-    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample}
-    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample}
+    train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample, 'shuffle': False}
+    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample, 'shuffle': False}
+    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample, 'shuffle': False}
     
-    cuda_kwargs = {
-        # 'num_workers': 4,
-        # 'pin_memory': True,
-        'shuffle': False}
-    train_kwargs.update(cuda_kwargs)
-    val_kwargs.update(cuda_kwargs)
-    test_kwargs.update(cuda_kwargs)
 
     train_loader = torch.utils.data.DataLoader(train_dataset,**train_kwargs)
     val_loader = torch.utils.data.DataLoader(val_dataset, **val_kwargs)
@@ -181,6 +174,8 @@ def main(args):
                         wandb.save("test_predictions.csv")
                         
                         print("save the model to wandb")
+                        states = model.state_dict()
+                        torch.save(states, os.path.join(args.result_path, 'model.pth'))
             else:
                 stop_epoch += 1
         scheduler.step()
@@ -191,9 +186,7 @@ def main(args):
     if args.wandb:
         wandb.finish()
     dist.barrier()
-    states = model.state_dict()
-    if rank == 0:
-        torch.save(states, os.path.join(args.result_path, 'model.pth'))
+    
 if __name__ == '__main__':
     model_dict = {
         0: "LSTM_VGG",
