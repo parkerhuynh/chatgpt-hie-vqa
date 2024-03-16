@@ -15,10 +15,10 @@ CUDA_VISIBLE_DEVICES=0,1 WORLD_SIZE=$NPROC_PER_NODE python3 -m torch.distributed
     --use_env DPP_vqa.py \
     --model "$MODEL" \
     --dataset "$DATASET" \
-    --epochs 50 \
-    --validation_epoch 1 \
+    --epochs 100 \
+    --validation_epoch 15 \
     --early_stop 5 \
     --batch-size 256 \
-    --val-batch-size 512 \
-    --test-batch-size 512 \
-    --debug
+    --val-batch-size 400 \
+    --test-batch-size 400 \
+    --wandb

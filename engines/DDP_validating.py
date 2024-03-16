@@ -5,7 +5,7 @@ import wandb
 import numpy as np
 import torch.nn.functional as F
 from loss_fn import compute_score_with_logits_paddingremoved
-
+import time
 @torch.no_grad()
 def normal_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
     model.eval()
@@ -72,6 +72,7 @@ def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
     results = []
     with torch.no_grad():
         for batch_idx, batch in enumerate(val_loader):  # Assuming question_id is part of your dataloader
+            start_time = time.time()
             question_id = batch['question_id'].cuda()
             images = batch['image'].cuda()
             rnn_questions = batch['onehot_feature'].cuda()
@@ -90,6 +91,8 @@ def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
             batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
                 
             _, question_type_predictions = torch.max(question_type_output.data, 1)
+            end_time = time.time()
+            elapsed_time = round(end_time - start_time,4)
             
             
             ddp_loss[0] += loss.item()* images.size(0)
@@ -108,7 +111,7 @@ def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
                 results.append(item)
             
             if batch_idx % 50 == 0 and rank == 0:
-                print(f'     - Validating | [{str(batch_idx).zfill(3)}/{str(len(val_loader)).zfill(3)}]')
+                print(f'     - Validating | [{str(batch_idx).zfill(3)}/{str(len(val_loader)).zfill(3)}]|  Running time: {elapsed_time} seconds')
         total_batch = batch_idx+1
         dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
         val_loss = ddp_loss[0] / total_batch
@@ -125,6 +128,7 @@ def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
                 f'({100. * question_type_accuracy:.2f}%) | '
                 f'VQA Accuracy: {round(ddp_loss[3].item(),2)}/{int(ddp_loss[5])} '
                 f'({100. * vqa_accuracy:.2f}%) \n'
+                
             )
             if args.wandb:
                 wandb.log({"epoch":epoch,

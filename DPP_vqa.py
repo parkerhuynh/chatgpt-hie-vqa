@@ -156,9 +156,9 @@ def main(args):
     
     if rank == 0:
         print("Start training")
-    if args.debug:
-        val_loader = train_loader
-        test_loader = train_loader
+    # if args.debug:
+    #     val_loader = train_loader
+    #     test_loader = train_loader
     trainer, validator, tester = call_engines(args)
     for epoch in range(1, args.epochs + 1):
         if rank == 0:
@@ -230,9 +230,9 @@ if __name__ == '__main__':
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=500 , metavar='N',
                         help='number of epochs to train (default: 14)')
-    parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
+    parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
                         help='learning rate (default: 1.0)')
-    parser.add_argument('--qt_lr', type=float, default=1e-5, metavar='LR',
+    parser.add_argument('--qt_lr', type=float, default=1e-4, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.8, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')

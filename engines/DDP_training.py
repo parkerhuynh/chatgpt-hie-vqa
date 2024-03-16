@@ -18,6 +18,7 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss
     
     
     for batch_idx, batch in enumerate(train_loader):
+        start_time = time.time()
         optimizer.zero_grad()
         images = batch['image'].cuda()
         rnn_questions = batch['onehot_feature'].cuda()
@@ -35,6 +36,8 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss
         ddp_loss[0] += print_vqa_loss
         ddp_loss[1] += batch_score.item() 
         ddp_loss[2] += batch_count
+        end_time = time.time()
+        elapsed_time = round(end_time - start_time, 4)
         
         if args.wandb:
             wandb.log({
@@ -42,7 +45,7 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss
             })
             
         if batch_idx % 50 == 0 and rank == 0:
-            print(f'     - Training | [{batch_idx+1}/{len(train_loader)}] | VQA Loss: {print_vqa_loss:.4f}')
+            print(f'     - Training | [{batch_idx+1}/{len(train_loader)}] | VQA Loss: {print_vqa_loss:.4f} | Running time: {elapsed_time} seconds')
     
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     if rank == 0:
@@ -70,6 +73,7 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn
     ddp_loss = torch.zeros(6).to(rank)
     
     for batch_idx, batch in enumerate(train_loader):
+        start_time = time.time()
         optimizer_for_question_type.zero_grad()
         optimizer_for_rest.zero_grad()
         
@@ -101,8 +105,8 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn
         ddp_loss[4] += sum(x == y for x, y in zip(question_type_predictions, question_type_label))
         ddp_loss[5] += batch_count
         
-        
-        
+        end_time = time.time()
+        elapsed_time = round(end_time - start_time,4)
         if args.wandb:
             wandb.log({
                 "total_loss": loss.item()* images.size(0),
@@ -115,7 +119,8 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn
                 f'     - Training | [{batch_idx+1}/{len(train_loader)}] | '
                 f'Loss: {loss.item() * images.size(0):.4f} | '
                 f'VQA Loss: {args.loss_weight * vqa_loss.item() * images.size(0):.4f} | '
-                f'Question Type Loss: {(1-args.loss_weight) * question_type_loss.item() * images.size(0):.4f}'
+                f'Question Type Loss: {(1-args.loss_weight) * question_type_loss.item() * images.size(0):.4f} | '
+                f'Running time: {elapsed_time} seconds'
             )
             
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
