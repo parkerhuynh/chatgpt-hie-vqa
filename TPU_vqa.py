@@ -60,7 +60,7 @@ def main(rank, args):
         if os.path.exists("./val_predictions.csv") and os.path.isdir("./val_predictions.csv"):
             shutil.rmtree("./val_predictions.csv")
         
-
+    print(device)
     seed = args.seed
     print("#"*100)
     print(seed)
@@ -336,4 +336,4 @@ if __name__ == '__main__':
     if not os.path.exists(args.test_saved_image_path):
         os.makedirs(args.test_saved_image_path)
         
-    xmp.spawn(main, args=(args,), nprocs=1)
+    xmp.spawn(main, args=(args,), nprocs=8)
