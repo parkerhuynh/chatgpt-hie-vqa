@@ -9,7 +9,7 @@ NPROC_PER_NODE=1 # Number of processes per node
 NODE_RANK=0
 MODEL=0
 DATASET=simpsons
-DATAPATH="/home/ngoc/data/simpsonsvqa"
+DATAPATH="/home/calie_andy_huynh/data"
 
 # Run the command
 python DPP_vqa.py \
