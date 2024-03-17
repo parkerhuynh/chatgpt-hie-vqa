@@ -321,4 +321,4 @@ if __name__ == '__main__':
     if not os.path.exists(args.test_saved_image_path):
         os.makedirs(args.test_saved_image_path)
         
-    xmp.spawn(main, args=(args,), nprocs=8)
+    xmp.spawn(main, args=(args,), nprocs=1)
