@@ -230,6 +230,18 @@ def main(rank, args):
     dist.barrier()
     
 if __name__ == '__main__':
+    
+    
+    # Get a list of all available TPU cores
+    devices = xm.get_xla_supported_devices(max_devices=None)
+
+    # Print available TPU devices
+    print("Available TPU devices:", devices)
+
+    # Example of using a TPU device
+    device = xm.xla_device()
+    print("Using device:", device)
+    
     model_dict = {
         0: "LSTM_VGG",
         1: "LSTM_VGG_BERT_Hie",
