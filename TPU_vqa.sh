@@ -12,7 +12,7 @@ DATASET=simpsons
 DATAPATH="/home/calie_andy_huynh/data"
 
 # Run the command
-python DPP_vqa.py \
+python TPU_vqa.py \
     --model "$MODEL" \
     --dataset "$DATASET" \
     --datapath "$DATAPATH" \
