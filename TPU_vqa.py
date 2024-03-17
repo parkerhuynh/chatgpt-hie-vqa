@@ -1,5 +1,4 @@
 import os
-os.environ["LD_LIBRARY_PATH"] = "/home/calie_andy_huynh/ana^Cnda3/envs/tpu/lib/"
 import argparse
 
 import math
@@ -14,7 +13,6 @@ import torch
 import torch_xla
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_multiprocessing as xmp
-import torch_xla.distributed.parallel_loader as pl
 from utils import *
 from datasets import create_vqa_datasets
 from models import call_model
