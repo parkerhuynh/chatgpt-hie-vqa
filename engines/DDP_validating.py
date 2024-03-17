@@ -8,6 +8,7 @@ from loss_fn import compute_score_with_logits_paddingremoved
 import time
 @torch.no_grad()
 def normal_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
+    epoch_start_time = time.time()
     model.eval()
     vqa_loss_fn, _ = loss_fn
     idx_to_vqa_ans = val_loader.dataset.idx_to_vqa_ans
@@ -50,9 +51,9 @@ def normal_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
     accuracy = ddp_loss[1] / ddp_loss[2]
     
     if batch_idx % 50 == 0 and rank == 0:
-        print('==> Validation | Epoch  {} | Average VQA loss: {:.4f} | VQA Accuracy: {}/{} ({:.2f}%)\n'.format(epoch, 
-            val_loss, round(ddp_loss[1].item(),2), int(ddp_loss[2]),
-            100. * accuracy))
+        epoch_end_time = time.time()
+        epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
+        print(f'==> Validation | Epoch  {epoch} | Average VQA loss: {val_loss:.4f} | VQA Accuracy: {round(ddp_loss[1].item(),2)}/{int(ddp_loss[2])} ({(100. * accuracy):.2f}%) | Running time {epoch_elapsed_time}')
         if args.wandb:
             wandb.log({"val_vqa_accuracy": accuracy,
                     "val_vqa_loss": val_loss,
@@ -62,6 +63,7 @@ def normal_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
 
 @torch.no_grad()
 def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
+    epoch_start_time = time.time()
     model.eval()
     vqa_loss_fn, question_type_loss_fn = loss_fn
     idx_to_vqa_ans = val_loader.dataset.idx_to_vqa_ans
@@ -120,6 +122,8 @@ def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
         vqa_accuracy = ddp_loss[3] / ddp_loss[5]
         question_type_accuracy = ddp_loss[4] / ddp_loss[5]
         
+        epoch_end_time = time.time()
+        epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
         if rank == 0:
             print(
                 f'==> Validation | Epoch {epoch}:  Average loss: {val_loss:.4f} | '
@@ -127,7 +131,8 @@ def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
                 f'Question Type Accuracy: {ddp_loss[4]}/{int(ddp_loss[5])} '
                 f'({100. * question_type_accuracy:.2f}%) | '
                 f'VQA Accuracy: {round(ddp_loss[3].item(),2)}/{int(ddp_loss[5])} '
-                f'({100. * vqa_accuracy:.2f}%) \n'
+                f'({100. * vqa_accuracy:.2f}%) | '
+                f'Running Time : {epoch_elapsed_time} seconds\n'
                 
             )
             if args.wandb:

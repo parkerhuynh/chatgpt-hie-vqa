@@ -176,7 +176,7 @@ def main(args):
                 break
             val_accuracy, val_result  = validator(model,loss_fn, rank, world_size, val_loader, epoch, args)
             
-            if val_accuracy > best_acc:
+            if val_accuracy >= best_acc:
                 stop_epoch = 0
                 best_acc = val_accuracy
                 val_final_result = collect_result(val_result, rank, epoch, "val", args)
@@ -218,7 +218,8 @@ def main(args):
 if __name__ == '__main__':
     model_dict = {
         0: "LSTM_VGG",
-        1: "LSTM_VGG_BERT_Hie"
+        1: "LSTM_VGG_BERT_Hie",
+        2: "LSTM_VGG_VQA_Hie"
     }
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -244,6 +245,8 @@ if __name__ == '__main__':
                         help='For Debuging')
     parser.add_argument('--dataset', type=str, choices=['simpsons', 'vqav2'], default='simpsons',
                     help='Choose dataset: "simpsons" or "vqav2"')
+    parser.add_argument('--datapath', type=str, required=True,
+                    help='Path to data direction')
     parser.add_argument('--wandb', action='store_true', default=False,
                         help='Log WandB')
     parser.add_argument('--model', type=int, choices=list(model_dict.keys()), default=0,
@@ -260,10 +263,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     #Check data path
-    args = parser.parse_args()
     model_name = model_dict[args.model]
     
     args.model_name = model_name
+    
+    
     
     temp_result_path = f"./tem_results/{args.dataset}/{args.model_name}"
     result_path = f"./results/{args.dataset}/{args.model_name}"
@@ -279,4 +283,32 @@ if __name__ == '__main__':
     vars(args).update(config_model)
     vars(args).update(dataset_config)
     
+    args.train_question = os.path.join(args.datapath, args.train_question)
+    args.val_question = os.path.join(args.datapath, args.val_question)
+    args.test_question = os.path.join(args.datapath, args.test_question)
+    args.train_annotation = os.path.join(args.datapath, args.train_annotation)
+    args.val_annotation = os.path.join(args.datapath, args.val_annotation)
+
+    args.stat_ques_list = [os.path.join(args.datapath, file) for file in args.stat_ques_list]
+    args.stat_ann_list = [os.path.join(args.datapath, file) for file in args.stat_ann_list]
+    
+    args.train_saved_image_path = "saved_" + args.train_image_path
+    args.val_saved_image_path = "saved_" + args.val_image_path
+    args.test_saved_image_path = "saved_" + args.test_image_path
+    
+    args.train_image_path = os.path.join(args.datapath, args.train_image_path)
+    args.val_image_path = os.path.join(args.datapath, args.val_image_path)
+    args.test_image_path = os.path.join(args.datapath, args.test_image_path)
+    
+    args.train_saved_image_path = os.path.join(args.datapath, args.train_saved_image_path)
+    args.val_saved_image_path = os.path.join(args.datapath, args.val_saved_image_path)
+    args.test_saved_image_path = os.path.join(args.datapath, args.test_saved_image_path)
+    print(args.test_saved_image_path)
+    if not os.path.exists(args.train_saved_image_path):
+        os.makedirs(args.train_saved_image_path)
+    if not os.path.exists(args.val_saved_image_path):
+        os.makedirs(args.val_saved_image_path)
+    if not os.path.exists(args.test_saved_image_path):
+        os.makedirs(args.test_saved_image_path)
+        
     main(args)

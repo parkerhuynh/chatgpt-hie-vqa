@@ -12,6 +12,7 @@ from torchvision import transforms
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW
 from datasets.randaugment import RandomAugment
 import random
+
 contractions = {
     "aint": "ain't", "arent": "aren't", "cant": "can't", "couldve":
     "could've", "couldnt": "couldn't", "couldn'tve": "couldn't've",
@@ -157,15 +158,21 @@ class VQADataset(Dataset):
         self.rank = rank
         self.args = args
         self.split = split
-        self.image_path = self.image_path = getattr(args, f"{split}_image_path")
+        self.image_path = getattr(args, f"{split}_image_path")
+        self.saved_image_path = getattr(args, f"{split}_saved_image_path")
         
         normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
         if split == "train":
+            # self.transform = transforms.Compose([
+            #     transforms.RandomResizedCrop(args.img_size, scale=(0.5, 1.0),
+            #                                 interpolation=Image.BICUBIC),
+            #     RandomAugment(2, 7, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
+            #                                         'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
+            #     transforms.ToTensor(),
+            #     normalize,
+            # ])
             self.transform = transforms.Compose([
-                transforms.RandomResizedCrop(args.img_size, scale=(0.5, 1.0),
-                                            interpolation=Image.BICUBIC),
-                RandomAugment(2, 7, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
-                                                    'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
+                transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
                 transforms.ToTensor(),
                 normalize,
             ])
@@ -175,6 +182,9 @@ class VQADataset(Dataset):
                 transforms.ToTensor(),
                 normalize,
             ])
+            
+        for folder_idx in range(20, 35):
+            os.makedirs(os.path.join(self.saved_image_path, f"S{str(folder_idx)}"), exist_ok=True)
             
     
         self.bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -203,58 +213,65 @@ class VQADataset(Dataset):
         self.question_type_dict = self.load_question_type()
         
         
-        with open('/home/ndhuynh/github/HieVQA/dataset/super_answer_type_simpsons.json', 'r') as file:
-            self.super_answer_types = json.load(file)
-            
-        
         if self.split in  ["val", "test"]:
-            self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open(self.args.answer_dict, 'r'))
-            if self.rank == 0:
-                print(f"{self.split} | Loaded vqa answer vocabulary")
             self.token_to_ix, self.pretrained_emb = pickle.load(open(self.args.question_dict, 'rb'))
             if self.rank == 0:
-                print(f"{self.split} | Loaded question vocabulary")
+                print(f"    - {self.split} : Loaded question vocabulary")
         else:
-            if os.path.exists(self.args.answer_dict):
-                self.vqa_ans_to_idx, self.idx_to_vqa_ans = json.load(open(self.args.answer_dict, 'r'))
-                if self.rank == 0:
-                    print(f"{self.split} | Loaded vqa answer vocabulary")
-            else:
-                self.vqa_ans_to_idx, self.idx_to_vqa_ans = self.create_ann_vocal()
-                json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans], open(self.args.answer_dict, 'w'))
-                if self.rank == 0:
-                    print(f"{self.split} | Created vqa answer vocabulary")
-            
-            
             if os.path.exists(self.args.question_dict):  
                 self.token_to_ix, self.pretrained_emb = pickle.load(open(self.args.question_dict, 'rb'))
                 if self.rank == 0:
-                    print(f"{self.split} | Loaded question vocabulary")
+                    print(f"    - {self.split} : Loaded question vocabulary")
             else:
                 self.token_to_ix, self.pretrained_emb = self.prepare_question_vocab()
                 pickle.dump([self.token_to_ix, self.pretrained_emb ], open(self.args.question_dict, 'wb'))
                 if self.rank == 0:
-                    print(f"{self.split} | Created question vocabulary")
+                    print(f"    - {self.split} : Created question vocabulary")
+              
         self.questions = self.load_questions()
+        if self.split in  ["val", "test"]:
+            self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map = json.load(open(self.args.answer_dict, 'r'))
+            if self.rank == 0:
+                print(f"    - {self.split} : Loaded vqa answer vocabulary")
+        else:
+            if os.path.exists(self.args.answer_dict):
+                self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map = json.load(open(self.args.answer_dict, 'r'))
+                if self.rank == 0:
+                    print(f"    - {self.split} : Loaded vqa answer vocabulary")
+            else:
+                if "hie" in args.model_name.lower():
+                    self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map  = self.create_hie_ann_vocal()
+                    json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map], open(self.args.answer_dict, 'w'))
+                else:
+                    self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map = self.create_normal_ann_vocal()
+                    json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map], open(self.args.answer_dict, 'w'))
+
+                if self.rank == 0:
+                    print(f"    - {self.split} : Created vqa answer vocabulary")
+        
+        self.question_type_output_dim = len(self.question_type_to_idx.keys())
+           
+        
         if self.split in ["train", "val"]:
             self.annotations = self.load_annotations()
+            random.shuffle(self.annotations)
         self.token_size = len(self.token_to_ix)
         self.vqa_output_dim = len(self.vqa_ans_to_idx.keys())
-        # random.shuffle(self.annotations)
 
     def __len__(self):
         if self.args.debug:
-            return 64
+            return 128
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
     def __getitem__(self, idx):
         
         
         if self.split in ["train", "val"]:
-            ann = self.annotations[idx]
-            que = self.questions[ann["id"]]
-            question_id = ann["id"]
             
+            
+            ann = self.annotations[idx]
+            question_id = ann["id"]
+            que = self.questions[question_id]
             
             question = que["question"]
             question_type_ids = que["question_type"]
@@ -270,15 +287,9 @@ class VQADataset(Dataset):
                 return_attention_mask=True,
                 return_tensors='pt',
             )
+            ans_iter, answer_str = proc_ans(ann, self.vqa_ans_to_idx)
+            image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             
-            vqa_answer_str = ann["answer"]
-            ans_iter = ann["ans_iter"]
-            
-            original_vqa_answer_str = ann["original_answer"]
-            answer_type_str = self.super_answer_types[original_vqa_answer_str]
-            answer_type_ids = self.question_type_to_idx[answer_type_str]
-            
-            image = image_preprocessing(que["img_path"], self.transform)
             example = {
                 'img_path': que["img_path"],
                 'question_id': question_id,
@@ -288,19 +299,14 @@ class VQADataset(Dataset):
                 'onehot_feature': question_onehot,
                 'question_type_str': question_type_str,
                 'question_type_label': torch.tensor(question_type_ids, dtype=torch.long),
-                'answer_type_str': answer_type_str,
-                'answer_type_label': torch.tensor(answer_type_ids, dtype=torch.long),
-                'vqa_answer_str':vqa_answer_str, 
-                'original_vqa_answer_str': original_vqa_answer_str,
-                'vqa_answer_label': torch.from_numpy(ans_iter), #vqa_answer_ids
+                'vqa_answer_str': answer_str,
+                'vqa_answer_label': torch.from_numpy(ans_iter) ,
                 "image": image
             }
         else:
             que = self.questions[idx]
             question_id = que["id"]
             question = que["question"]
-            # question_type_ids = que["question_type"]
-            # question_type_str = que["question_type_str"]
             question_onehot = torch.from_numpy(que["onehot_features"])
             encoding = self.bert_tokenizer.encode_plus(
                 question,
@@ -312,7 +318,7 @@ class VQADataset(Dataset):
                 return_attention_mask=True,
                 return_tensors='pt',
             )
-            image = image_preprocessing(que["img_path"], self.transform)
+            image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             example = {
                 'img_path': que["img_path"],
                 'question_id': question_id,
@@ -320,23 +326,18 @@ class VQADataset(Dataset):
                 'bert_input_ids': encoding['input_ids'].flatten(),
                 'bert_attention_mask': encoding['attention_mask'].flatten(),
                 'onehot_feature': question_onehot,
-                # 'question_type_str': question_type_str,
-                # 'question_type_label': torch.tensor(question_type_ids, dtype=torch.long),
-                # 'answer_type_str': answer_type_str,
-                # 'answer_type_label': torch.tensor(answer_type_ids, dtype=torch.long),
                 "image": image
             }
-        # if self.rank == 0:
-            # print(example)
+            
         return example
     
     def load_questions(self):
-        if self.split == "train":
-            question_path = self.args.train_question
-        elif self.split == "val":
-            question_path = self.args.val_question
-        else:
-            question_path = self.args.test_question
+        folder_name = {
+            "train":"train_images", 
+            "val": "val_images",
+            "test": "test_images"
+        }
+        question_path = getattr(self.args, f"{self.split}_question")
         with open(question_path, 'r') as file:
             questions = json.load(file)["questions"]
         
@@ -344,6 +345,8 @@ class VQADataset(Dataset):
             processed_questions = {}
             for question in questions:
                 question['img_path'] = os.path.join(self.image_path, question['img_path'])
+                question['saved_img_path'] = question['img_path'].replace(folder_name[self.split], "saved_" + folder_name[self.split])
+                question['saved_img_path'] = question['saved_img_path'].replace("jpg", "pkl")
                 question_type_str = self.question_type_dict[question["question"]]
                 question["question_type_str"] = question_type_str
                 question_type_idx = self.question_type_to_idx[question_type_str]
@@ -354,10 +357,9 @@ class VQADataset(Dataset):
             processed_questions = []
             for question in questions:
                 question['img_path'] = os.path.join(self.image_path, question['img_path'])
-                # question_type_str = self.question_type_dict[question["question"]]
-                # question["question_type_str"] = question_type_str
-                # question_type_idx = self.question_type_to_idx[question_type_str]
-                # question["question_type"] = question_type_idx
+                question['saved_img_path'] = question['img_path'].replace(folder_name[self.split], "saved_" + folder_name[self.split])
+                question['saved_img_path'] = question['saved_img_path'].replace("jpg", "pkl")
+
                 question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
                 processed_questions.append(question) 
         return processed_questions
@@ -377,33 +379,28 @@ class VQADataset(Dataset):
         return token_to_ix, pretrained_emb
     
     def load_annotations(self):
-        if self.split == "train":
-            annotation_path = self.args.train_annotation
-        else:
-            annotation_path = self.args.val_annotation
+        annotation_path = self.image_path = getattr(self.args, f"{self.split}_annotation")
         with open(annotation_path, 'r') as file:
             annotation_list = json.load(file)["annotations"]
+            
         processed_annotations = []
         for ann in annotation_list:
-            ans_count = 0
-            for judge in ann["judgements"].values():
-                if judge["answer"] == 1:
-                    ans_count += 1
-            if ans_count >= 2:
-                ann["answer"] = prep_ans(ann["answer"])
-                ann["original_answer"] = ann["answer"]
-                ans_iter = proc_ans(ann, self.vqa_ans_to_idx)
-                ann["ans_iter"] = ans_iter
-                processed_annotations.append(ann)
-            
-            # elif ann["overall_scores"]["question"] < 0.5:
-            #     ann["answer"] = prep_ans(ann["answer"])
-            #     ann["original_answer"] = ann["answer"]
-            #     ann["answer"] = "unanswerable"
-            #     processed_annotations.append(ann)
+            answer_str = prep_ans(ann["answer"])
+            if answer_str in list(self.vqa_ans_to_idx.keys()):
+                ans_count = 0
+                for judge in ann["judgements"].values():
+                    if judge["answer"] == 1:
+                        ans_count += 1
+                if ans_count >= 2:
+                    ann["answer"] = prep_ans(ann["answer"])
+                    ann["original_answer"] = ann["answer"]
+                    ans_iter = proc_ans(ann, self.vqa_ans_to_idx)
+                    ann["ans_iter"] = ans_iter
+                    processed_annotations.append(ann)
+        
         return processed_annotations
     
-    def create_ann_vocal(self):
+    def create_normal_ann_vocal(self):
         examples = []
         path_files = self.args.stat_ann_list
         
@@ -411,6 +408,7 @@ class VQADataset(Dataset):
             with open(path_file, 'r') as file:
                 single_anns = json.load(file)
             examples += single_anns['annotations']
+            
         processed_examples = []
         for ann in examples:
             ans_count = 0
@@ -421,28 +419,93 @@ class VQADataset(Dataset):
                 ann["answer"] = prep_ans(ann["answer"])
                 ann["original_answer"] = ann["answer"]
                 processed_examples.append(ann)
-            # elif ann["overall_scores"]["question"] < 0.5:
-            #     ann["answer"] = prep_ans(ann["answer"])
-            #     ann["original_answer"] = ann["answer"]
-            #     ann["answer"] = "unanswerable"
-            #     processed_examples.append(ann)
-        examples = processed_examples      
-        # ans2tok, tok2ans = {"unanswerable": 0}, {0: "unanswerable"}
+        examples = processed_examples
         ans2tok, tok2ans = {}, {}
-        id = 0
+        ans_freq_dict = {}
         
-        for ex in examples:
-            ans_str = ex["answer"]
+        for ans in examples:
+            ans_proc = prep_ans(ans['answer'])
+            if ans_proc not in ans_freq_dict:
+                ans_freq_dict[ans_proc] = 1
+            else:
+                ans_freq_dict[ans_proc] += 1
+        ans_freq_filter = ans_freq_dict.copy()
+        most_frequent_words = dict(sorted(ans_freq_dict.items(), key=lambda item: item[1], reverse=True)[:1000])
+        ans_freq_filter = most_frequent_words
+        for ans in ans_freq_filter:
+            tok2ans[tok2ans.__len__()] = ans
+            ans2tok[ans] = ans2tok.__len__()
+
+        return ans2tok, tok2ans, {}
+    
+    def create_hie_ann_vocal(self):
+        path_files = self.args.stat_ques_list
+        stat_ques_list = []
+        for path_file in path_files:
+            with open(path_file, 'r') as file:
+                single_questions = json.load(file)
+            stat_ques_list += single_questions['questions']
+        question_list = {}
+        for ques in stat_ques_list:
+            question_list[ques["id"]] = ques["question"]
+
+        examples = []
+        path_files = self.args.stat_ann_list
         
-            if ans_str not in ans2tok.keys():
-                ans2tok[ans_str] = id
-                tok2ans[id] = ans_str
-                id += 1 
-        return ans2tok, tok2ans
+        for path_file in path_files:
+            with open(path_file, 'r') as file:
+                single_anns = json.load(file)
+            examples += single_anns['annotations']
+        
+        processed_examples = []
+        for ann in examples:
+            ans_count = 0
+            for judge in ann["judgements"].values():
+                if judge["answer"] == 1:
+                    ans_count += 1
+            if ans_count >= 2:
+                ann["answer"] = prep_ans(ann["answer"])
+                ann["original_answer"] = ann["answer"]
+                processed_examples.append(ann)
+        examples = processed_examples
+        ans2tok, tok2ans = {}, {}
+        
+        ans_freq_dict = {}
+        
+        for ans in examples:
+            ans_proc = prep_ans(ans['answer'])
+            if ans_proc not in ans_freq_dict:
+                ans_freq_dict[ans_proc] = 1
+            else:
+                ans_freq_dict[ans_proc] += 1
+        ans_freq_filter = ans_freq_dict.copy()
+        
+        most_frequent_words = dict(sorted(ans_freq_dict.items(), key=lambda item: item[1], reverse=True)[:1000])
+        ans_freq_filter = most_frequent_words
+        
+        for ans in ans_freq_filter:
+            tok2ans[tok2ans.__len__()] = ans
+            ans2tok[ans] = ans2tok.__len__()
+            
+        question_type_map = {}
+        for ans in examples:
+            ans_proc = prep_ans(ans['answer'])
+            if ans_proc in list(ans2tok.keys()):
+                ans_id = ans2tok[ans_proc]
+                quetion_str = question_list[ans["id"]]
+                question_type_str  = self.question_type_dict[quetion_str]
+                question_type_id = self.question_type_to_idx[question_type_str]
+                
+                if ans_id not in question_type_map:
+                    question_type_map[ans_id] = []
+                if question_type_id not in question_type_map[ans_id]:
+                    question_type_map[ans_id].append(question_type_id)
+            
+        return ans2tok, tok2ans, question_type_map
     
     def load_question_type(self):
         question_type_dict = {}
-        with open('/home/ndhuynh/github/Question-Analysis/train_question_type_gpt_v6.json', 'r') as file:
+        with open(self.args.question_type, 'r') as file:
             for line in file:
                 question_object = json.loads(line)
                 question_str = question_object["question"]
@@ -450,18 +513,9 @@ class VQADataset(Dataset):
                 question_type = question_type_processing(question_type)
                 question_type_dict[question_str] = question_type
         file.close()
-        
-        with open('/home/ndhuynh/github/Question-Analysis/val_question_type_gpt_v6.json', 'r') as file:
-            for line in file:
-                question_object = json.loads(line)
-                question_str = question_object["question"]
-                if question_str not in question_type_dict:
-                    question_type = question_object["question_type"]
-                    question_type = question_type_processing(question_type)
-                    question_type_dict[question_str] = question_type
-        file.close()
         return question_type_dict
         
+
 def question_type_processing(question_type):
     question_type = question_type.strip()
     question_type = question_type.split(':')[-1]
@@ -481,15 +535,18 @@ def question_type_processing(question_type):
     question_type = question_type.replace(" or ", ", ")
     question_type = question_type.replace("+", ", ")
     question_type = question_type.replace(" , ", ", ")
+    question_type = question_type.replace("|", " ")
     question_type = re.sub('\s+', ' ', question_type).strip()
-    # 
+    # # 
     for word in ["clothing", "object", "material", "shape", "food", "transportation", "pattern", "letter", "drink"]:
         if word in question_type:
             return "object"
-    for word in ["age", "animal", "body parts", "gender", "body part", "person", "emotion"]:
+    for word in ["age", "animal", "body parts", "gender", "body part", "person", "emotion", "relationship"]:
         if word in question_type:
             return "human"
-    for word in ["weather", "season", "time", "unknown", "any", "not", "event", "geometry", "music", "description", "flavor", "sound", "taste"]:        
+    for word in ["weather", "season", "time", "unknown", "any", "not", "event", "geometry", "music", "description", 
+                 "flavor", "sound", "taste", "other", "comparison", "team", "duration", "sport this response is incorrect please try again", "fitting",
+                 "orientation", "facial feature","please provide the question type for the question what does it say after water lane?"]:        
         if word in question_type:
             return "other"
     for word in ["activity", "action"]:        
@@ -498,14 +555,26 @@ def question_type_processing(question_type):
     for word in ["direction"]:        
         if word in question_type:
             return "location"
-    for word in ["yes/no"]:        
+    for word in ["yes/no", "binary", "you missed providing an answer for this question",
+                 "it seems like there was an error in the provided question please rephrase the question so that it can be categorized accurately",
+                 "Is there traffic on the table?", "no"
+                 ]:        
         if word in question_type:
             return "yes/no"
-    for word in ["number"]:        
+    for word in ["number", "you didnt provide a clear question so i am unable to categorize it into one of the question types provided"]:        
         if word in question_type:
             return "number"
-    question_type = question_type.split(",")
-    question_type =  [item.strip() for item in question_type][0]
+    for word in ["sports"]:   
+        if word in question_type:
+            return "sport"
+    for word in ["color"]:   
+        if word in question_type:
+            return "color"
+    for word in ["location", "hand dominance"]:   
+        if word in question_type:
+            return "location"
+    # question_type = question_type.split(",")
+    # question_type =  [item.strip() for item in question_type][0]
     return question_type
 
 
@@ -557,15 +626,21 @@ def rnn_proc_ques(ques, token_to_ix, max_token):
             break
     return ques_ix
 
-def image_preprocessing(image_path, transform):
-    image = Image.open(image_path).convert('RGB')
+def image_preprocessing(image_path, saved_image_path, transform):
+    if os.path.exists(saved_image_path):
+        image = pickle.load(open(saved_image_path, 'rb'))
+    else:
+        image = Image.open(image_path).convert('RGB')
+        pickle.dump(image, open(saved_image_path, 'wb'))
+        print(f"saving {saved_image_path}")
+    # image = Image.open(image_path).convert('RGB')
     image = transform(image)
     return image
 
 def proc_ans(ans, ans_to_ix):
     ans_score = np.zeros(ans_to_ix.__len__(), np.float32)
-    ans_str = ans['answer']
-    ans_idx = ans_to_ix[ans_str]
-    ans_score[ans_idx] = 1
+    ans_proc = prep_ans(ans['answer'])
+    ans_score[ans_to_ix[ans_proc]] = 1
+    return ans_score, ans_proc
 
-    return ans_score
+    

@@ -4,7 +4,7 @@ import torch.distributed as dist
 import wandb
 import numpy as np
 import torch.nn.functional as F
-
+import time
 @torch.no_grad()
 def normal_tester(model, rank, world_size, test_loader):
     idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans

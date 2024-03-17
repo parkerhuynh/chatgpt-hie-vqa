@@ -250,13 +250,17 @@ class VQADataset(Dataset):
         
         if self.split in ["train", "val"]:
             self.annotations = self.load_annotations()
-            random.shuffle(self.annotations)
+            
         self.token_size = len(self.token_to_ix)
         self.vqa_output_dim = len(self.vqa_ans_to_idx.keys())
 
     def __len__(self):
         if self.args.debug:
-            return 2000
+            if self.split in ["train", "val"]:
+                return 2000
+            else:
+                len(self.questions)
+        
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
     def __getitem__(self, idx):

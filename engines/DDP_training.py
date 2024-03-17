@@ -9,6 +9,7 @@ from loss_fn import compute_score_with_logits_paddingremoved
 
 
 def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn, epoch, sampler=None):
+    epoch_start_time = time.time()
     optimizer, _ = optimizers
     vqa_loss_fn, _ = loss_fn
     model.train()
@@ -51,11 +52,14 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss
     if rank == 0:
         train_loss = ddp_loss[0] / (batch_idx+1)
         vqa_accuracy = ddp_loss[1] / ddp_loss[2]
+        epoch_end_time = time.time()
+        epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
         print(
             f'==> Train Epoch {epoch} | '
             f'Average loss: {train_loss:.4f} | '
             f'VQA Accuracy: {round(ddp_loss[1].item(), 2)}/{int(ddp_loss[2])} '
-            f'({100. * vqa_accuracy:.2f}%) \n'
+            f'({100. * vqa_accuracy:.2f}%) | '
+            f'Running  Time: {epoch_elapsed_time} seconds'
         )
         if args.wandb:
             wandb.log({"epoch":epoch,
@@ -64,6 +68,7 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss
                 })
 
 def hie_trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn, epoch, sampler=None):
+    epoch_start_time = time.time()
     if sampler:
         train_loader.sampler.set_epoch(epoch)
     optimizer_for_question_type, optimizer_for_rest = optimizers
@@ -131,6 +136,9 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn
         train_question_type_loss = ddp_loss[2] / total_batch
         vqa_accuracy = ddp_loss[3] / ddp_loss[5]
         question_type_accuracy = ddp_loss[4] / ddp_loss[5]
+        
+        epoch_end_time = time.time()
+        epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
         print(
             f'==> Train | Epoch {epoch}: | '
             f'Average loss: {train_loss:.4f} | '
@@ -139,7 +147,8 @@ def hie_trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn
             f'Question Type Accuracy: {ddp_loss[4]}/{int(ddp_loss[5])} '
             f'({100. * question_type_accuracy:.2f}%) | '
             f'VQA Accuracy: {round(ddp_loss[3].item(), 2)}/{int(ddp_loss[5])} '
-            f'({100. * vqa_accuracy:.2f}%) \n'
+            f'({100. * vqa_accuracy:.2f}%) | '
+            f'Running Time : {epoch_elapsed_time} seconds\n'
         )
         
         if args.wandb:
