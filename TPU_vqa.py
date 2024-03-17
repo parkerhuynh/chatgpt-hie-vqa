@@ -41,21 +41,24 @@ from loss_fn import instance_bce_with_logits
 
 
 os.environ["#wandb_START_METHOD"] = "thread"
+os.environ["PJRT_DEVICE"] = "TPU"
+os.environ["LD_LIBRARY_PATH"] = "/home/calie_andy_huynh/ana^Cnda3/envs/tpu/lib/"
 def main(rank, args):
     print(rank)
     device = xm.xla_device()
-    if os.path.exists(args.temp_result_path) and os.path.isdir(args.temp_result_path):
-        shutil.rmtree(args.temp_result_path)
-    os.makedirs(args.temp_result_path)
-    
-    if os.path.exists(args.result_path) and os.path.isdir(args.result_path):
-        shutil.rmtree(args.result_path)
-    os.makedirs(args.result_path)
-    
-    if os.path.exists("./test_predictions.csv") and os.path.isdir("./test_predictions.csv"):
-        shutil.rmtree("./test_predictions.csv")
-    if os.path.exists("./val_predictions.csv") and os.path.isdir("./val_predictions.csv"):
-        shutil.rmtree("./val_predictions.csv")
+    if rank == 0:
+        if os.path.exists(args.temp_result_path) and os.path.isdir(args.temp_result_path):
+            shutil.rmtree(args.temp_result_path)
+        os.makedirs(args.temp_result_path)
+        
+        if os.path.exists(args.result_path) and os.path.isdir(args.result_path):
+            shutil.rmtree(args.result_path)
+        os.makedirs(args.result_path)
+        
+        if os.path.exists("./test_predictions.csv") and os.path.isdir("./test_predictions.csv"):
+            shutil.rmtree("./test_predictions.csv")
+        if os.path.exists("./val_predictions.csv") and os.path.isdir("./val_predictions.csv"):
+            shutil.rmtree("./val_predictions.csv")
         
 
     seed = args.seed
@@ -333,4 +336,4 @@ if __name__ == '__main__':
     if not os.path.exists(args.test_saved_image_path):
         os.makedirs(args.test_saved_image_path)
         
-    xmp.spawn(main, args=(args,), nprocs=1)
+    xmp.spawn(main, args=(args,), nprocs=8)
