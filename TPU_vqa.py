@@ -41,7 +41,7 @@ from loss_fn import instance_bce_with_logits
 
 
 os.environ["#wandb_START_METHOD"] = "thread"
-def main(args):
+def main(rank, args):
     
     device = xm.xla_device()
     if os.path.exists(args.temp_result_path) and os.path.isdir(args.temp_result_path):
