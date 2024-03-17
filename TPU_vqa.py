@@ -1,5 +1,7 @@
-import argparse
 import os
+os.environ["LD_LIBRARY_PATH"] = "/home/calie_andy_huynh/ana^Cnda3/envs/tpu/lib/"
+import argparse
+
 import math
 import numpy as np
 import random
@@ -42,7 +44,7 @@ from loss_fn import instance_bce_with_logits
 
 os.environ["#wandb_START_METHOD"] = "thread"
 os.environ["PJRT_DEVICE"] = "TPU"
-os.environ["LD_LIBRARY_PATH"] = "/home/calie_andy_huynh/ana^Cnda3/envs/tpu/lib/"
+
 def main(rank, args):
     print(rank)
     device = xm.xla_device()
