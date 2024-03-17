@@ -42,7 +42,7 @@ from loss_fn import instance_bce_with_logits
 
 os.environ["#wandb_START_METHOD"] = "thread"
 def main(rank, args):
-    
+    print(rank)
     device = xm.xla_device()
     if os.path.exists(args.temp_result_path) and os.path.isdir(args.temp_result_path):
         shutil.rmtree(args.temp_result_path)
