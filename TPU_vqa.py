@@ -231,7 +231,7 @@ def main(rank, args):
     
 if __name__ == '__main__':
     
-    
+    print("*"*200)
     # Get a list of all available TPU cores
     devices = xm.get_xla_supported_devices(max_devices=None)
 
