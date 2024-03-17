@@ -7,7 +7,7 @@ MASTER_PORT=7778
 NPROC_PER_NODE=1 # Number of processes per node
 # Variables for the command
 NODE_RANK=0
-MODEL=0
+MODEL=2
 DATASET=simpsons
 DATAPATH="/home/ngoc/data/simpsonsvqa"
 
@@ -18,10 +18,10 @@ CUDA_VISIBLE_DEVICES=0 WORLD_SIZE=$NPROC_PER_NODE python3 -m torch.distributed.l
     --dataset "$DATASET" \
     --datapath "$DATAPATH" \
     --epochs 100 \
-    --validation_epoch 50 \
+    --validation_epoch 20 \
     --early_stop 5 \
-    --batch-size 32 \
-    --val-batch-size 128 \
-    --test-batch-size 128 \
-    --lr 1e-5
+    --batch-size 200 \
+    --val-batch-size 400 \
+    --test-batch-size 400 \
+    --wandb
     

@@ -219,7 +219,7 @@ if __name__ == '__main__':
     model_dict = {
         0: "LSTM_VGG",
         1: "LSTM_VGG_BERT_Hie",
-        2: "LSTM_VGG_VQA_Hie"
+        2: "LSTM_VGG_LSTM_Hie"
     }
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
