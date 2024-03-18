@@ -27,14 +27,14 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizer, loss_
         loss.backward()
         optimizer.step()
         
-        vqa_pred_np = vqa_output.cpu().data.numpy()
-        vqa_pred_argmax = np.argmax(vqa_pred_np, axis=1)
-        vqa_indices = torch.tensor(vqa_pred_argmax)
-        rows = torch.arange(vqa_labels.size(0))
-        selected_values = vqa_labels[rows, vqa_indices]
-        sum_selected_values = selected_values.sum()
+        # vqa_pred_np = vqa_output.cpu().data.numpy()
+        # vqa_pred_argmax = np.argmax(vqa_pred_np, axis=1)
+        # vqa_indices = torch.tensor(vqa_pred_argmax)
+        # rows = torch.arange(vqa_labels.size(0))
+        # selected_values = vqa_labels[rows, vqa_indices]
+        # sum_selected_values = selected_values.sum()
         ddp_loss[0] += loss.item()
-        ddp_loss[1] += sum_selected_values.item()
+        # ddp_loss[1] += sum_selected_values.item()
         ddp_loss[2] += len(vqa_labels)
         
     
@@ -47,12 +47,13 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizer, loss_
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     if rank == 0:
         train_loss = ddp_loss[0] / ddp_loss[2]
-        vqa_accuracy = ddp_loss[1] / ddp_loss[2]
-        print(f'        - Train Epoch {epoch}:  Average loss: {train_loss:.4f} | VQA Accuracy: {ddp_loss[1]}/{int(ddp_loss[2])} ({100. * vqa_accuracy:.2f}%) \n')
+        # vqa_accuracy = ddp_loss[1] / ddp_loss[2]
+        print(f'        - Train Epoch {epoch}:  Average loss: {train_loss:.4f} \n')
+        # print(f'        - Train Epoch {epoch}:  Average loss: {train_loss:.4f} | VQA Accuracy: {ddp_loss[1]}/{int(ddp_loss[2])} ({100. * vqa_accuracy:.2f}%) \n')
         if args.wandb:
             wandb.log({"epoch":epoch,
                 "train_vqa_loss": train_loss,
-                "train_vqa_accuracy": vqa_accuracy
+                # "train_vqa_accuracy": vqa_accuracy
                 })
 
 

@@ -25,47 +25,47 @@ def normal_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_a
             rnn_questions = batch['onehot_feature'].cuda()
             vqa_labels = batch['vqa_answer_label'].cuda()
             
-            vqa_output = model(images, rnn_questions)
-            del(images, rnn_questions)
-            vqa_loss = vqa_loss_fn(vqa_output, vqa_labels)
+    #         vqa_output = model(images, rnn_questions)
+    #         del(images, rnn_questions)
+    #         vqa_loss = vqa_loss_fn(vqa_output, vqa_labels)
             
-            print_vqa_loss = vqa_loss.item()* question_id.size(0)
-            batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
+    #         print_vqa_loss = vqa_loss.item()* question_id.size(0)
+    #         batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
 
-            logits = torch.max(vqa_output, 1)[1].data # argmax
-            ddp_loss[0] += print_vqa_loss
-            ddp_loss[1] += batch_score.item() 
-            ddp_loss[2] += batch_count
+    #         logits = torch.max(vqa_output, 1)[1].data # argmax
+    #         ddp_loss[0] += print_vqa_loss
+    #         ddp_loss[1] += batch_score.item() 
+    #         ddp_loss[2] += batch_count
             
             
-            for ques_id, pres in zip(question_id, logits):
-                item = {
-                    "question_id": ques_id.item(),
-                    "prediction": idx_to_vqa_ans[str(pres.item())],
-                    }
-                results.append(item)
-            del(vqa_output, vqa_loss, print_vqa_loss, batch_score , batch_count, logits, vqa_labels)
+    #         for ques_id, pres in zip(question_id, logits):
+    #             item = {
+    #                 "question_id": ques_id.item(),
+    #                 "prediction": idx_to_vqa_ans[str(pres.item())],
+    #                 }
+    #             results.append(item)
+    #         del(vqa_output, vqa_loss, print_vqa_loss, batch_score , batch_count, logits, vqa_labels)
             
-            if rank == 0:
-                print(f'     - Validating [{str(batch_idx).zfill(4)}/{str(len(val_loader)).zfill(4)}]')
+    #         if rank == 0:
+    #             print(f'     - Validating [{str(batch_idx).zfill(4)}/{str(len(val_loader)).zfill(4)}]')
 
-    dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
-    val_loss = ddp_loss[0] / (batch_idx+1)
-    accuracy = ddp_loss[1] / ddp_loss[2]
+    # dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
+    # val_loss = ddp_loss[0] / (batch_idx+1)
+    # accuracy = ddp_loss[1] / ddp_loss[2]
     
-    if batch_idx % 50 == 0 and rank == 0:
-        epoch_end_time = time.time()
-        epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
-        print(f'==> Validation | Epoch  {epoch} | Average VQA loss: {val_loss:.4f} | VQA Accuracy: {round(ddp_loss[1].item(),2)}/{int(ddp_loss[2])} ({(100. * accuracy):.2f}%) | Running time {epoch_elapsed_time}')
-        if args.wandb:
-            wandb.log({"val_vqa_accuracy": accuracy,
-                    "val_vqa_loss": val_loss,
-                    "epoch":epoch})
+    # if batch_idx % 50 == 0 and rank == 0:
+    #     epoch_end_time = time.time()
+    #     epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
+    #     print(f'==> Validation | Epoch  {epoch} | Average VQA loss: {val_loss:.4f} | VQA Accuracy: {round(ddp_loss[1].item(),2)}/{int(ddp_loss[2])} ({(100. * accuracy):.2f}%) | Running time {epoch_elapsed_time}')
+    #     if args.wandb:
+    #         wandb.log({"val_vqa_accuracy": accuracy,
+    #                 "val_vqa_loss": val_loss,
+    #                 "epoch":epoch})
     
-    with open(os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_val.json"), "w") as f:
-        json.dump(results, f)
-    del(results)
-    return accuracy
+    # with open(os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_val.json"), "w") as f:
+    #     json.dump(results, f)
+    # del(results)
+    # return accuracy
 
 
 @torch.no_grad()
@@ -74,7 +74,6 @@ def hie_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans,
     epoch_start_time = time.time()
     vqa_loss_fn, question_type_loss_fn = loss_fn
     ddp_loss = torch.zeros(6).to(rank)
-    accuracy = 0
     results = []
     with torch.no_grad():
         for batch_idx, batch in enumerate(val_loader):  # Assuming question_id is part of your dataloader

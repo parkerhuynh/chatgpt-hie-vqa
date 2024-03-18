@@ -90,7 +90,7 @@ def main(args):
     train_sample = DistributedSampler(train_dataset, rank=rank, num_replicas=world_size, shuffle=True)
     val_sample = DistributedSampler(val_dataset, rank=rank, num_replicas=world_size)
     test_sample = DistributedSampler(test_dataset, rank=rank, num_replicas=world_size)
-    
+
     train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample, 'shuffle': False}
     val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample, 'shuffle': False}
     test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample, 'shuffle': False}

@@ -27,46 +27,49 @@ def normal_trainer(args, model, rank, train_loader, optimizers, loss_fn, epoch, 
         
         
         vqa_output = model(images, rnn_questions)
+        del(images, rnn_questions)
         vqa_loss = vqa_loss_fn(vqa_output, vqa_labels)
         vqa_loss.backward()
-        print_vqa_loss = vqa_loss.item()* images.size(0)
-        optimizer.step()
         
-        batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
+        print_vqa_loss = vqa_loss.item()* vqa_labels.size(0)
+        optimizer.step()
+        del(vqa_labels)
+        # batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
     
-        ddp_loss[0] += print_vqa_loss
-        ddp_loss[1] += batch_score.item() 
-        ddp_loss[2] += batch_count
-        ddp_loss[3] += 1
+        # ddp_loss[0] += print_vqa_loss
+        # ddp_loss[1] += batch_score.item() 
+        # ddp_loss[2] += batch_count
+        # ddp_loss[3] += 1
         end_time = time.time()
         elapsed_time = round(end_time - start_time, 4)
-        
+        now_epoch_time = round(end_time - epoch_start_time, 4)
         if args.wandb:
             wandb.log({
                 "vqa_loss": print_vqa_loss,
             })
             
         if batch_idx % 50 == 0 and rank == 0:
-            print(f'     - Training | [{batch_idx+1}/{len(train_loader)}] | VQA Loss: {print_vqa_loss:.4f} | Running time: {elapsed_time} seconds')
+            print(f'     - Training | [{batch_idx+1}/{len(train_loader)}] | VQA Loss: {print_vqa_loss:.4f} | Running time: {elapsed_time} seconds | Total Time: {now_epoch_time}')
     
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     if rank == 0:
         train_loss = ddp_loss[0] / ddp_loss[3]
-        vqa_accuracy = ddp_loss[1] / ddp_loss[2]
+        # vqa_accuracy = ddp_loss[1] / ddp_loss[2]
         epoch_end_time = time.time()
         epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
         print(
             f'==> Train Epoch {epoch} | '
             f'Average loss: {train_loss:.4f} | '
             f'VQA Accuracy: {round(ddp_loss[1].item(), 2)}/{int(ddp_loss[2])} '
-            f'({100. * vqa_accuracy:.2f}%) | '
+            # f'({100. * vqa_accuracy:.2f}%) | '
             f'Running  Time: {epoch_elapsed_time} seconds'
         )
         if args.wandb:
             wandb.log({"epoch":epoch,
                 "train_vqa_loss": train_loss,
-                "train_vqa_accuracy": vqa_accuracy,
+                # "train_vqa_accuracy": vqa_accuracy,
                 })
+    del(ddp_loss)
 
 def hie_trainer(args, model, rank, train_loader, optimizers, loss_fn, epoch, sampler=None):
     epoch_start_time = time.time()

@@ -12,7 +12,7 @@ from torchvision import transforms
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW
 from datasets.randaugment import RandomAugment
 import random
-
+import time
 contractions = {
     "aint": "ain't", "arent": "aren't", "cant": "can't", "couldve":
     "could've", "couldnt": "couldn't", "couldn'tve": "couldn't've",
@@ -162,19 +162,19 @@ class VQADataset(Dataset):
         
         normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
         if split == "train":
-            self.transform = transforms.Compose([
-                transforms.RandomResizedCrop(args.img_size, scale=(0.5, 1.0),
-                                            interpolation=Image.BICUBIC),
-                RandomAugment(2, 7, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
-                                                    'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
-                transforms.ToTensor(),
-                normalize,
-            ])
             # self.transform = transforms.Compose([
-            #     transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
+            #     transforms.RandomResizedCrop(args.img_size, scale=(0.5, 1.0),
+            #                                 interpolation=Image.BICUBIC),
+            #     RandomAugment(2, 7, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
+            #                                         'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
             #     transforms.ToTensor(),
             #     normalize,
             # ])
+            self.transform = transforms.Compose([
+                transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
+                transforms.ToTensor(),
+                normalize,
+            ])
         else:
             self.transform = transforms.Compose([
                 transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
@@ -256,47 +256,39 @@ class VQADataset(Dataset):
 
     def __len__(self):
         if self.args.debug:
-            return 2000
+            return 3000
         
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
     def __getitem__(self, idx):
-        
-        
         if self.split in ["train", "val"]:
             ann = self.annotations[idx]
             question_id = ann["question_id"]
             que = self.questions[question_id]
-            question = que["question"]
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             
             example = {
-                'img_path': que["img_path"],
                 'question_id': question_id,
-                'question_text': question,
-                "bert_input_ids": que['bert_input_ids'],
-                "bert_input_ids": que['bert_attention_mask'],
+                # "bert_input_ids": que['bert_input_ids'],
+                # "bert_input_ids": que['bert_attention_mask'],
                 'onehot_feature': torch.from_numpy(que["onehot_features"]),
-                'question_type_str': que["question_type_str"],
-                'question_type_label': torch.tensor(que["question_type"], dtype=torch.long),
-                'vqa_answer_str': ann["vqa_answer_str"],
+                # 'question_type_str': que["question_type_str"],
+                # 'question_type_label': torch.tensor(que["question_type"], dtype=torch.long),
+                # 'vqa_answer_str': ann["vqa_answer_str"],
                 'vqa_answer_label': torch.from_numpy(ann["vqa_answer_label"]) ,
                 "image": image
             }
         else:
             que = self.questions[idx]
             question_id = que["question_id"]
-            question = que["question"]
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             example = {
-                'img_path': que["img_path"],
                 'question_id': question_id,
-                'question_text': question,
-                "bert_input_ids": que['bert_attention_mask'],
+                # "bert_input_ids": que['bert_attention_mask'],
                 'onehot_feature': torch.from_numpy(que["onehot_features"]),
                 "image": image
             }
-            
+
         return example
     
     def load_questions(self):
@@ -320,23 +312,23 @@ class VQADataset(Dataset):
                     saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
                     saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
                     question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
-                    question_type_str = self.question_type_dict[question["question"]]
-                    question["question_type_str"] = question_type_str
-                    question_type_idx = self.question_type_to_idx[question_type_str]
-                    question["question_type"] = question_type_idx
+                    # question_type_str = self.question_type_dict[question["question"]]
+                    # question["question_type_str"] = question_type_str
+                    # question_type_idx = self.question_type_to_idx[question_type_str]
+                    # question["question_type"] = question_type_idx
                     question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
-                    encoding = self.bert_tokenizer.encode_plus(
-                        question["question"],
-                        add_special_tokens=True,
-                        max_length=self.args.max_ques_len,
-                        return_token_type_ids=False,
-                        padding='max_length',
-                        truncation=True,
-                        return_attention_mask=True,
-                        return_tensors='pt',
-                    )
-                    question['bert_input_ids'] = encoding['input_ids'].flatten() 
-                    question['bert_attention_mask'] = encoding['attention_mask'].flatten()
+                    # encoding = self.bert_tokenizer.encode_plus(
+                    #     question["question"],
+                    #     add_special_tokens=True,
+                    #     max_length=self.args.max_ques_len,
+                    #     return_token_type_ids=False,
+                    #     padding='max_length',
+                    #     truncation=True,
+                    #     return_attention_mask=True,
+                    #     return_tensors='pt',
+                    # )
+                    # question['bert_input_ids'] = encoding['input_ids'].flatten() 
+                    # question['bert_attention_mask'] = encoding['attention_mask'].flatten()
                     processed_questions[question["question_id"]] = question
 
                     
@@ -349,19 +341,18 @@ class VQADataset(Dataset):
                     saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
                     question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
                     question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
-                    
-                    encoding = self.bert_tokenizer.encode_plus(
-                        question["question"],
-                        add_special_tokens=True,
-                        max_length=self.args.max_ques_len,
-                        return_token_type_ids=False,
-                        padding='max_length',
-                        truncation=True,
-                        return_attention_mask=True,
-                        return_tensors='pt',
-                    )
-                    question['bert_input_ids'] = encoding['input_ids'].flatten() 
-                    question['bert_attention_mask'] = encoding['attention_mask'].flatten()
+                    # encoding = self.bert_tokenizer.encode_plus(
+                    #     question["question"],
+                    #     add_special_tokens=True,
+                    #     max_length=self.args.max_ques_len,
+                    #     return_token_type_ids=False,
+                    #     padding='max_length',
+                    #     truncation=True,
+                    #     return_attention_mask=True,
+                    #     return_tensors='pt',
+                    # )
+                    # question['bert_input_ids'] = encoding['input_ids'].flatten() 
+                    # question['bert_attention_mask'] = encoding['attention_mask'].flatten()
                     processed_questions.append(question)
             pickle.dump(processed_questions, open(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl", 'wb'))
 
@@ -612,10 +603,11 @@ def image_preprocessing(image_path, saved_image_path, transform):
         image = pickle.load(open(saved_image_path, 'rb'))
     else:
         image = Image.open(image_path).convert('RGB')
+        image = transform(image)
         pickle.dump(image, open(saved_image_path, 'wb'))
         print(f"saving {saved_image_path}")
     # image = Image.open(image_path).convert('RGB')
-    image = transform(image)
+    
     return image
 
 def proc_ans(ans, ans_to_ix):
