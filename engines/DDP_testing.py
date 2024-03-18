@@ -5,9 +5,10 @@ import wandb
 import numpy as np
 import torch.nn.functional as F
 import time
+import json
+import os
 @torch.no_grad()
-def normal_tester(model, rank, world_size, test_loader):
-    idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans
+def normal_tester(model, rank, test_loader, args, epoch,  idx_to_vqa_ans, idx_to_question_type=None):
     model.eval()
     results = []
     with torch.no_grad():
@@ -27,13 +28,13 @@ def normal_tester(model, rank, world_size, test_loader):
                     "prediction": idx_to_vqa_ans[str(pres.item())],
                     }
                 results.append(item)
-        return results
+        with open(os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_test.json"), "w") as f:
+            json.dump(results, f)
+        del(results)
     
 
 @torch.no_grad()
-def hie_tester(model, rank, world_size, test_loader):
-    idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans
-    idx_to_question_type = test_loader.dataset.idx_to_question_type
+def hie_tester(model, rank, test_loader,  idx_to_vqa_ans, idx_to_question_type):
     model.eval()
     results = []
     with torch.no_grad():

@@ -6,7 +6,7 @@ import numpy as np
 import torch.nn.functional as F
 
 @torch.no_grad()
-def normal_tester(model, rank, world_size, test_loader):
+def normal_tester(model, rank, test_loader):
     idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans
     model.eval()
     results = []
@@ -36,7 +36,7 @@ def normal_tester(model, rank, world_size, test_loader):
     
 
 @torch.no_grad()
-def hie_tester(model, rank, world_size, test_loader):
+def hie_tester(model, rank, test_loader):
     idx_to_vqa_ans = test_loader.dataset.idx_to_vqa_ans
     idx_to_question_type = test_loader.dataset.idx_to_question_type
     model.eval()

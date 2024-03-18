@@ -162,19 +162,19 @@ class VQADataset(Dataset):
         
         normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
         if split == "train":
-            # self.transform = transforms.Compose([
-            #     transforms.RandomResizedCrop(args.img_size, scale=(0.5, 1.0),
-            #                                 interpolation=Image.BICUBIC),
-            #     RandomAugment(2, 7, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
-            #                                         'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
-            #     transforms.ToTensor(),
-            #     normalize,
-            # ])
             self.transform = transforms.Compose([
-                transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
+                transforms.RandomResizedCrop(args.img_size, scale=(0.5, 1.0),
+                                            interpolation=Image.BICUBIC),
+                RandomAugment(2, 7, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
+                                                    'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
                 transforms.ToTensor(),
                 normalize,
             ])
+            # self.transform = transforms.Compose([
+            #     transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
+            #     transforms.ToTensor(),
+            #     normalize,
+            # ])
         else:
             self.transform = transforms.Compose([
                 transforms.Resize((args.img_size, args.img_size), interpolation=Image.BICUBIC),
@@ -256,10 +256,7 @@ class VQADataset(Dataset):
 
     def __len__(self):
         if self.args.debug:
-            if self.split in ["train", "val"]:
-                return 2000
-            else:
-                len(self.questions)
+            return 2000
         
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
@@ -267,106 +264,107 @@ class VQADataset(Dataset):
         
         
         if self.split in ["train", "val"]:
-            
-            
             ann = self.annotations[idx]
             question_id = ann["question_id"]
             que = self.questions[question_id]
-            
             question = que["question"]
-            question_type_ids = que["question_type"]
-            question_type_str = que["question_type_str"]
-            question_onehot = torch.from_numpy(que["onehot_features"])
-            encoding = self.bert_tokenizer.encode_plus(
-                question,
-                add_special_tokens=True,
-                max_length=self.args.max_ques_len,
-                return_token_type_ids=False,
-                padding='max_length',
-                truncation=True,
-                return_attention_mask=True,
-                return_tensors='pt',
-            )
-            ans_iter, answer_str = proc_ans(ann, self.vqa_ans_to_idx)
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             
             example = {
                 'img_path': que["img_path"],
                 'question_id': question_id,
                 'question_text': question,
-                'bert_input_ids': encoding['input_ids'].flatten(),
-                'bert_attention_mask': encoding['attention_mask'].flatten(),
-                'onehot_feature': question_onehot,
-                'question_type_str': question_type_str,
-                'question_type_label': torch.tensor(question_type_ids, dtype=torch.long),
-                'vqa_answer_str': answer_str,
-                'vqa_answer_label': torch.from_numpy(ans_iter) ,
+                "bert_input_ids": que['bert_input_ids'],
+                "bert_input_ids": que['bert_attention_mask'],
+                'onehot_feature': torch.from_numpy(que["onehot_features"]),
+                'question_type_str': que["question_type_str"],
+                'question_type_label': torch.tensor(que["question_type"], dtype=torch.long),
+                'vqa_answer_str': ann["vqa_answer_str"],
+                'vqa_answer_label': torch.from_numpy(ann["vqa_answer_label"]) ,
                 "image": image
             }
         else:
             que = self.questions[idx]
             question_id = que["question_id"]
             question = que["question"]
-            question_onehot = torch.from_numpy(que["onehot_features"])
-            encoding = self.bert_tokenizer.encode_plus(
-                question,
-                add_special_tokens=True,
-                max_length=self.args.max_ques_len,
-                return_token_type_ids=False,
-                padding='max_length',
-                truncation=True,
-                return_attention_mask=True,
-                return_tensors='pt',
-            )
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             example = {
                 'img_path': que["img_path"],
                 'question_id': question_id,
                 'question_text': question,
-                'bert_input_ids': encoding['input_ids'].flatten(),
-                'bert_attention_mask': encoding['attention_mask'].flatten(),
-                'onehot_feature': question_onehot,
+                "bert_input_ids": que['bert_attention_mask'],
+                'onehot_feature': torch.from_numpy(que["onehot_features"]),
                 "image": image
             }
             
         return example
     
     def load_questions(self):
-        folder_name = {
+        if os.path.exists(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl"):
+            processed_questions = pickle.load(open(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl", 'rb'))
+        else:
+            folder_name = {
             "train":"train2014", 
             "val": "val2014",
-            "test": "test2015"
-        }
-        question_path = getattr(self.args, f"{self.split}_question")
-        with open(question_path, 'r') as file:
-            questions = json.load(file)["questions"]
-        
-        if self.split in  ["train", "val"]:
-            processed_questions = {}
-            for question in questions:
-                formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
-                question['img_path'] = os.path.join(self.image_path, formatted_image_id)
-                saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
-                saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
-                question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
-                
-                
-                question_type_str = self.question_type_dict[question["question"]]
-                question["question_type_str"] = question_type_str
-                question_type_idx = self.question_type_to_idx[question_type_str]
-                question["question_type"] = question_type_idx
-                question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
-                processed_questions[question["question_id"]] = question
-        else:
-            processed_questions = []
-            for question in questions:
-                formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
-                question['img_path'] = os.path.join(self.image_path, formatted_image_id)
-                saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
-                saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
-                question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
-                question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
-                processed_questions.append(question) 
+            "test": "train2014"
+            }
+            question_path = getattr(self.args, f"{self.split}_question")
+            with open(question_path, 'r') as file:
+                questions = json.load(file)
+            
+            if self.split in  ["train", "val"]:
+                processed_questions = {}
+                for question in questions:
+                    formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
+                    question['img_path'] = os.path.join(self.image_path, formatted_image_id)
+                    saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
+                    saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
+                    question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
+                    question_type_str = self.question_type_dict[question["question"]]
+                    question["question_type_str"] = question_type_str
+                    question_type_idx = self.question_type_to_idx[question_type_str]
+                    question["question_type"] = question_type_idx
+                    question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
+                    encoding = self.bert_tokenizer.encode_plus(
+                        question["question"],
+                        add_special_tokens=True,
+                        max_length=self.args.max_ques_len,
+                        return_token_type_ids=False,
+                        padding='max_length',
+                        truncation=True,
+                        return_attention_mask=True,
+                        return_tensors='pt',
+                    )
+                    question['bert_input_ids'] = encoding['input_ids'].flatten() 
+                    question['bert_attention_mask'] = encoding['attention_mask'].flatten()
+                    processed_questions[question["question_id"]] = question
+
+                    
+            else:
+                processed_questions = []
+                for question in questions:
+                    formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
+                    question['img_path'] = os.path.join(self.image_path, formatted_image_id)
+                    saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
+                    saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
+                    question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
+                    question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
+                    
+                    encoding = self.bert_tokenizer.encode_plus(
+                        question["question"],
+                        add_special_tokens=True,
+                        max_length=self.args.max_ques_len,
+                        return_token_type_ids=False,
+                        padding='max_length',
+                        truncation=True,
+                        return_attention_mask=True,
+                        return_tensors='pt',
+                    )
+                    question['bert_input_ids'] = encoding['input_ids'].flatten() 
+                    question['bert_attention_mask'] = encoding['attention_mask'].flatten()
+                    processed_questions.append(question)
+            pickle.dump(processed_questions, open(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl", 'wb'))
+
         return processed_questions
 
     def prepare_question_vocab(self):
@@ -384,14 +382,22 @@ class VQADataset(Dataset):
         return token_to_ix, pretrained_emb
     
     def load_annotations(self):
-        annotation_path = self.image_path = getattr(self.args, f"{self.split}_annotation")
-        with open(annotation_path, 'r') as file:
-            annotation_list = json.load(file)["annotations"]
-        processed_annotation = []
-        for ans in annotation_list:
-            ans_proc = prep_ans(ans['multiple_choice_answer'])
-            if ans_proc in list(self.vqa_ans_to_idx.keys()):
-                processed_annotation.append(ans)
+        if os.path.exists(f"./datasets/proccessed_annotations_{self.args.dataset}_{self.split}.pkl"):
+            processed_annotation = pickle.load(open(f"./datasets/proccessed_annotations_{self.args.dataset}_{self.split}.pkl", 'rb'))
+        else:
+            annotation_path = getattr(self.args, f"{self.split}_annotation")
+            with open(annotation_path, 'r') as file:
+                annotation_list = json.load(file)
+            processed_annotation = []
+            for ans in annotation_list:
+                ans_proc = prep_ans(ans['multiple_choice_answer'])
+                if ans_proc in list(self.vqa_ans_to_idx.keys()):
+                    ans_iter, answer_str = proc_ans(ans, self.vqa_ans_to_idx)
+                    ans['vqa_answer_str'] =  answer_str,
+                    ans['vqa_answer_label']= ans_iter
+
+                    processed_annotation.append(ans)
+            pickle.dump(processed_annotation, open(f"./datasets/proccessed_annotations_{self.args.dataset}_{self.split}.pkl", 'wb'))
         return processed_annotation
     
     def create_normal_ann_vocal(self):
@@ -401,7 +407,7 @@ class VQADataset(Dataset):
         for path_file in path_files:
             with open(path_file, 'r') as file:
                 single_anns = json.load(file)
-            examples += single_anns['annotations']
+            examples += single_anns
         
         ans2tok, tok2ans = {}, {}
         ans_freq_dict = {}
@@ -438,7 +444,7 @@ class VQADataset(Dataset):
         for path_file in path_files:
             with open(path_file, 'r') as file:
                 single_anns = json.load(file)
-            examples += single_anns['annotations']
+            examples += single_anns
         
             
         ans2tok, tok2ans = {}, {}

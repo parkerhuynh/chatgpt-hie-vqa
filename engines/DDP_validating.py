@@ -6,12 +6,13 @@ import numpy as np
 import torch.nn.functional as F
 from loss_fn import compute_score_with_logits_paddingremoved
 import time
+import os
+import json
 @torch.no_grad()
-def normal_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
+def normal_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans, idx_to_question_type=None):
     epoch_start_time = time.time()
     model.eval()
     vqa_loss_fn, _ = loss_fn
-    idx_to_vqa_ans = val_loader.dataset.idx_to_vqa_ans
     
     ddp_loss = torch.zeros(3).to(rank)
     accuracy = 0
@@ -25,9 +26,10 @@ def normal_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
             vqa_labels = batch['vqa_answer_label'].cuda()
             
             vqa_output = model(images, rnn_questions)
+            del(images, rnn_questions)
             vqa_loss = vqa_loss_fn(vqa_output, vqa_labels)
             
-            print_vqa_loss = vqa_loss.item()* images.size(0)
+            print_vqa_loss = vqa_loss.item()* question_id.size(0)
             batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
 
             logits = torch.max(vqa_output, 1)[1].data # argmax
@@ -42,6 +44,7 @@ def normal_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
                     "prediction": idx_to_vqa_ans[str(pres.item())],
                     }
                 results.append(item)
+            del(vqa_output, vqa_loss, print_vqa_loss, batch_score , batch_count, logits, vqa_labels)
             
             if rank == 0:
                 print(f'     - Validating [{str(batch_idx).zfill(4)}/{str(len(val_loader)).zfill(4)}]')
@@ -58,17 +61,18 @@ def normal_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
             wandb.log({"val_vqa_accuracy": accuracy,
                     "val_vqa_loss": val_loss,
                     "epoch":epoch})
-    return accuracy, results
+    
+    with open(os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_val.json"), "w") as f:
+        json.dump(results, f)
+    del(results)
+    return accuracy
 
 
 @torch.no_grad()
-def hie_validator(model, loss_fn, rank, world_size, val_loader, epoch, args):
-    epoch_start_time = time.time()
+def hie_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans, idx_to_question_type):
     model.eval()
+    epoch_start_time = time.time()
     vqa_loss_fn, question_type_loss_fn = loss_fn
-    idx_to_vqa_ans = val_loader.dataset.idx_to_vqa_ans
-    idx_to_question_type = val_loader.dataset.idx_to_question_type
-    
     ddp_loss = torch.zeros(6).to(rank)
     accuracy = 0
     results = []

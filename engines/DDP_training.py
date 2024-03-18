@@ -8,14 +8,14 @@ import time
 from loss_fn import compute_score_with_logits_paddingremoved
 
 
-def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn, epoch, sampler=None):
+def normal_trainer(args, model, rank, train_loader, optimizers, loss_fn, epoch, sampler=None):
     epoch_start_time = time.time()
     optimizer, _ = optimizers
     vqa_loss_fn, _ = loss_fn
     model.train()
     if sampler:
         train_loader.sampler.set_epoch(epoch)
-    ddp_loss = torch.zeros(3).to(rank)
+    ddp_loss = torch.zeros(4).to(rank)
     
     
     for batch_idx, batch in enumerate(train_loader):
@@ -37,6 +37,7 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss
         ddp_loss[0] += print_vqa_loss
         ddp_loss[1] += batch_score.item() 
         ddp_loss[2] += batch_count
+        ddp_loss[3] += 1
         end_time = time.time()
         elapsed_time = round(end_time - start_time, 4)
         
@@ -50,7 +51,7 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss
     
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     if rank == 0:
-        train_loss = ddp_loss[0] / (batch_idx+1)
+        train_loss = ddp_loss[0] / ddp_loss[3]
         vqa_accuracy = ddp_loss[1] / ddp_loss[2]
         epoch_end_time = time.time()
         epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
@@ -67,7 +68,7 @@ def normal_trainer(args, model, rank, world_size, train_loader, optimizers, loss
                 "train_vqa_accuracy": vqa_accuracy,
                 })
 
-def hie_trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn, epoch, sampler=None):
+def hie_trainer(args, model, rank, train_loader, optimizers, loss_fn, epoch, sampler=None):
     epoch_start_time = time.time()
     if sampler:
         train_loader.sampler.set_epoch(epoch)

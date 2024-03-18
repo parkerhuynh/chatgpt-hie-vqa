@@ -13,19 +13,11 @@ import wandb
 import torch
 
 def read_json(rpath: str):
-    result = []
-    with open(rpath, 'rt') as f:
-        for line in f:
-            result.append(json.loads(line.strip()))
-
+    with open(rpath, "r") as f:
+        result = json.load(f)
     return result
-def collect_result(result, rank, epoch, split, args):
-    main_temp_result_path = os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_{split}.json")
-    with open(main_temp_result_path, 'wt') as f:
-        for res in result:
-            f.write(json.dumps(res) + '\n')
+def collect_result(rank, epoch, split, args):
     dist.barrier()
-
     result = []
     if rank == 0:
         for rank_id in range(dist.get_world_size()):
@@ -42,7 +34,6 @@ def collect_result(result, rank, epoch, split, args):
         result_path = os.path.join(args.result_path, f"epoch_{epoch}_{split}.json")
         json.dump(result, open(result_path, 'w'), indent=4)
         print(f'==> {split} | total number of {split} set: {len(result)} | saving {result_path} |')
-
     dist.barrier()
     return result
 

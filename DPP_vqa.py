@@ -13,12 +13,9 @@ import torch.distributed as dist
 from utils import *
 from datasets import create_vqa_datasets
 from models import call_model
-from torch.optim.lr_scheduler import StepLR
-from torch import nn
 import pandas as pd
 import wandb
 from scheduler import LinearLR
-from datetime import datetime
 from transformers import AdamW
 from engines import ddp_call_engines as call_engines 
 import warnings
@@ -27,16 +24,22 @@ from torch.utils.data.distributed import DistributedSampler
 # Hiding runtime warnings
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 import torch.optim as optim
-from io import BytesIO
-from PIL import Image
 import numpy as np
-import glob
 import shutil
 from loss_fn import instance_bce_with_logits
 os.environ["#wandb_START_METHOD"] = "thread"
+
+def ask_to_continue():
+    while True:
+        user_input = input("Result exists. Do you want to continue? (yes/no): ").strip().lower()
+        if user_input == 'yes':
+            return True
+        elif user_input == 'no':
+            return False
+        else:
+            print("Invalid input. Please enter 'yes' or 'no'.")
+
 def main(args):
     print("hello")
     init_distributed_mode(args)
@@ -65,10 +68,6 @@ def main(args):
             shutil.rmtree(args.result_path)
         os.makedirs(args.result_path)
         
-        if os.path.exists("./test_predictions.csv") and os.path.isdir("./test_predictions.csv"):
-            shutil.rmtree("./test_predictions.csv")
-        if os.path.exists("./val_predictions.csv") and os.path.isdir("./val_predictions.csv"):
-            shutil.rmtree("./val_predictions.csv")
     seed = args.seed
     print("#"*100)
     print(seed)
@@ -148,17 +147,21 @@ def main(args):
         print(f"    - Trainable Parameters: {trainable_params}")
         print(f"    - Untrainable Parameters: {untrainable_params}")
         print(f"Training:")
-    
+        del(total_params, trainable_params, untrainable_params)
+    del(train_dataset, val_dataset, test_dataset)
+    del(val_sample, test_sample)
     best_acc = 0
-    test_best_result = None
-    val_best_result = None
     stop_epoch = 0
     
     if rank == 0:
         print("Start training")
-    # if args.debug:
-    #     val_loader = train_loader
-    #     test_loader = train_loader
+    if args.debug:
+        val_loader = train_loader
+        test_loader = train_loader
+
+    idx_to_vqa_ans = val_loader.dataset.idx_to_vqa_ans
+    idx_to_question_type = val_loader.dataset.idx_to_question_type if "hie" in args.model_name.lower() else None
+        
     trainer, validator, tester = call_engines(args)
     for epoch in range(1, args.epochs + 1):
         if rank == 0:
@@ -168,38 +171,37 @@ def main(args):
                 print(f"VQA LR: {scheduler_for_rest.get_last_lr()[0]}")
             else:
                 print(f"LR: {scheduler.get_last_lr()[0]}")
-            
-        trainer(args, model, rank, world_size, train_loader, optimizers, loss_fn, epoch, sampler=train_sample)
+        
+        trainer(args, model, rank, train_loader, optimizers, loss_fn, epoch, sampler=train_sample)
         if epoch >= args.validation_epoch:
             if stop_epoch == args.early_stop:
                 print("STOP TRAINING")
                 break
-            val_accuracy, val_result  = validator(model,loss_fn, rank, world_size, val_loader, epoch, args)
+            val_accuracy = validator(model,loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans, idx_to_question_type)
             
-            if val_accuracy >= best_acc:
+            if val_accuracy > best_acc:
                 stop_epoch = 0
                 best_acc = val_accuracy
-                val_final_result = collect_result(val_result, rank, epoch, "val", args)
-                test_result  = tester(model, rank, world_size, test_loader)
-                test_final_result = collect_result(test_result, rank, epoch, "test", args)
+                val_final_result = collect_result(rank, epoch, "val", args)
+                tester(model, rank, test_loader, args, epoch, idx_to_vqa_ans, idx_to_question_type)
+                test_final_result = collect_result(rank, epoch, "test", args)
                 
                 if rank == 0:
-                    test_best_result = test_final_result
-                    val_best_result = val_final_result
+                    val_predictions = pd.DataFrame(val_final_result)
+                    val_predictions.to_csv(os.path.join(args.result_path, "val_predictions.csv"), index=False)
+                    print(f'    - saved result {os.path.join(args.result_path, "val_predictions.csv")}')
+                    test_predictions = pd.DataFrame(test_final_result)
+                    test_predictions.to_csv(os.path.join(args.result_path, "test_predictions.csv"), index=False)
+                    print(f'    - saved result {os.path.join(args.result_path, "test_predictions.csv")}')
+                    torch.save(model.state_dict(), os.path.join(args.result_path, 'model.pth'))
+                    print(f'    - saved model : {os.path.join(args.result_path, "model.pth")}')
+                    del(val_predictions, test_predictions)
                     if args.wandb:
                         wandb.log({"best_accuracy": best_acc})
-                        val_predictions = pd.DataFrame(val_best_result)
-                        val_predictions.to_csv("val_predictions.csv", index=False)
-                        wandb.save("val_predictions.csv")
-                        print(f"number val set: {len(val_predictions)}")
-                        test_predictions = pd.DataFrame(test_best_result)
-                        test_predictions.to_csv("test_predictions.csv", index=False)
-                        print(f"number test set: {len(test_predictions)}")
-                        wandb.save("test_predictions.csv")
+                        wandb.save(os.path.join(args.result_path, "test_predictions.csv"))
+                        wandb.save(os.path.join(args.result_path, "val_predictions.csv"))
                         
-                        print("save the model to wandb")
-                        states = model.state_dict()
-                        torch.save(states, os.path.join(args.result_path, 'model.pth'))
+                del(val_final_result, test_final_result)
             else:
                 stop_epoch += 1
         if "hie" in args.model_name.lower():
@@ -218,8 +220,8 @@ def main(args):
 if __name__ == '__main__':
     model_dict = {
         0: "LSTM_VGG",
-        1: "LSTM_VGG_BERT_Hie",
-        2: "LSTM_VGG_LSTM_Hie"
+        2: "LSTM_VGG_BERT_Hie",
+        1: "LSTM_VGG_LSTM_Hie"
     }
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -303,12 +305,13 @@ if __name__ == '__main__':
     args.train_saved_image_path = os.path.join(args.datapath, args.train_saved_image_path)
     args.val_saved_image_path = os.path.join(args.datapath, args.val_saved_image_path)
     args.test_saved_image_path = os.path.join(args.datapath, args.test_saved_image_path)
-    print(args.test_saved_image_path)
     if not os.path.exists(args.train_saved_image_path):
         os.makedirs(args.train_saved_image_path)
     if not os.path.exists(args.val_saved_image_path):
         os.makedirs(args.val_saved_image_path)
     if not os.path.exists(args.test_saved_image_path):
         os.makedirs(args.test_saved_image_path)
+
+    del(model_name, temp_result_path, argparse, model_dict, parser, result_path, config_model)
         
     main(args)
