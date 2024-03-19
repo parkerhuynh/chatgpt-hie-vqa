@@ -20,7 +20,7 @@ def normal_tester(model, rank, test_loader, args, epoch,  idx_to_vqa_ans, idx_to
             vqa_output = model(images, rnn_questions)
             vqa_indices = torch.max(vqa_output, 1)[1].data # argmax
             
-            if  rank == 0:
+            if batch_idx % 50 ==0 and rank == 0:
                 print(f'     - Testing | [{str(batch_idx).zfill(3)}/{str(len(test_loader)).zfill(3)}]')
             for ques_id, pres in zip(question_id, vqa_indices):
                 item = {
