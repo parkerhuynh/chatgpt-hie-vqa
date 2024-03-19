@@ -34,7 +34,7 @@ def normal_tester(model, rank, test_loader, args, epoch,  idx_to_vqa_ans, idx_to
     
 
 @torch.no_grad()
-def hie_tester(model, rank, test_loader,  idx_to_vqa_ans, idx_to_question_type):
+def hie_tester(model, rank, test_loader, args, epoch, idx_to_vqa_ans, idx_to_question_type):
     model.eval()
     results = []
     with torch.no_grad():
@@ -42,8 +42,12 @@ def hie_tester(model, rank, test_loader,  idx_to_vqa_ans, idx_to_question_type):
             question_id = batch['question_id'].cuda()
             rnn_questions = batch['onehot_feature'].cuda()
             images = batch['image'].cuda()
-            bert_questions = batch['bert_input_ids'].cuda()
-            bert_attend_mask_questions = batch['bert_attention_mask'].cuda()
+            if "bert" in args.model_name.lower():
+                bert_questions = batch['bert_input_ids'].cuda()
+                bert_attend_mask_questions = batch['bert_attention_mask'].cuda()
+            else:
+                bert_questions = None
+                bert_attend_mask_questions = None
             
             vqa_output, question_type_output = model(images, rnn_questions, bert_questions, bert_attend_mask_questions)
             vqa_indices = torch.max(vqa_output, 1)[1].data # argmax
@@ -58,4 +62,6 @@ def hie_tester(model, rank, test_loader,  idx_to_vqa_ans, idx_to_question_type):
                     "question_prediction": idx_to_question_type[question_type_pres.item()]
                 }
                 results.append(item)
-        return results
+        with open(os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_test.json"), "w") as f:
+            json.dump(results, f)
+        del(results)

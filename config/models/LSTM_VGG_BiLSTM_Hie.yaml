@@ -1,0 +1,6 @@
+max_ques_len: 20
+image_feature_output: 1024
+word_embedding: 300
+rnn_hidden_size: 512
+img_size: 224
+use_glove: True

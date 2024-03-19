@@ -13,6 +13,7 @@ from transformers import BertTokenizer, BertForSequenceClassification, AdamW
 from datasets.randaugment import RandomAugment
 import random
 import time
+from collections import defaultdict
 contractions = {
     "aint": "ain't", "arent": "aren't", "cant": "can't", "couldve":
     "could've", "couldnt": "couldn't", "couldn'tve": "couldn't've",
@@ -267,18 +268,16 @@ class VQADataset(Dataset):
             que = self.questions[question_id]
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
             onehot_features = rnn_proc_ques(que["question"], self.token_to_ix, 20)
-            
             example = {
                 'question_id': question_id,
-                # "bert_input_ids": que['bert_input_ids'],
-                # "bert_input_ids": que['bert_attention_mask'],
                 'onehot_feature': torch.from_numpy(onehot_features),
-                # 'question_type_str': que["question_type_str"],
-                # 'question_type_label': torch.tensor(que["question_type"], dtype=torch.long),
-                # 'vqa_answer_str': ann["vqa_answer_str"],
+                'question_type_label': torch.tensor(que["question_type"], dtype=torch.long),
                 'vqa_answer_label': torch.from_numpy(ann["vqa_answer_label"]) ,
                 "image": image
             }
+            if "bert" in self.args.model_name.lower():
+                example["bert_input_ids"] = que['bert_input_ids']
+                example["bert_attention_mask"] = que['bert_attention_mask']
         else:
             que = self.questions[idx]
             question_id = que["question_id"]
@@ -287,17 +286,16 @@ class VQADataset(Dataset):
             
             example = {
                 'question_id': question_id,
-                # "bert_input_ids": que['bert_attention_mask'],
                 'onehot_feature': torch.from_numpy(onehot_features),
                 "image": image
             }
+            if "bert" in self.args.model_name.lower():
+                example["bert_input_ids"] = que['bert_input_ids']
+                example["bert_attention_mask"] = que['bert_attention_mask']
 
         return example
     
     def load_questions(self):
-        # if os.path.exists(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl"):
-        #     processed_questions = pickle.load(open(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl", 'rb'))
-        # else:
         folder_name = {
         "train":"train2014", 
         "val": "val2014",
@@ -315,23 +313,24 @@ class VQADataset(Dataset):
                 saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
                 saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
                 question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
-                # question_type_str = self.question_type_dict[question["question"]]
-                # question["question_type_str"] = question_type_str
-                # question_type_idx = self.question_type_to_idx[question_type_str]
-                # question["question_type"] = question_type_idx
-                # question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
-                # encoding = self.bert_tokenizer.encode_plus(
-                #     question["question"],
-                #     add_special_tokens=True,
-                #     max_length=self.args.max_ques_len,
-                #     return_token_type_ids=False,
-                #     padding='max_length',
-                #     truncation=True,
-                #     return_attention_mask=True,
-                #     return_tensors='pt',
-                # )
-                # question['bert_input_ids'] = encoding['input_ids'].flatten() 
-                # question['bert_attention_mask'] = encoding['attention_mask'].flatten()
+                question_type_str = self.question_type_dict[question["question"]]
+                question["question_type_str"] = question_type_str
+                question_type_idx = self.question_type_to_idx[question_type_str]
+                question["question_type"] = question_type_idx
+                question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
+                if "bert" in self.args.model_name.lower():
+                    encoding = self.bert_tokenizer.encode_plus(
+                        question["question"],
+                        add_special_tokens=True,
+                        max_length=self.args.max_ques_len,
+                        return_token_type_ids=False,
+                        padding='max_length',
+                        truncation=True,
+                        return_attention_mask=True,
+                        return_tensors='pt',
+                    )
+                    question['bert_input_ids'] = encoding['input_ids'].flatten() 
+                    question['bert_attention_mask'] = encoding['attention_mask'].flatten()
                 processed_questions[question["question_id"]] = question
 
                 
@@ -343,21 +342,21 @@ class VQADataset(Dataset):
                 saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
                 saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
                 question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
-                # question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
-                # encoding = self.bert_tokenizer.encode_plus(
-                #     question["question"],
-                #     add_special_tokens=True,
-                #     max_length=self.args.max_ques_len,
-                #     return_token_type_ids=False,
-                #     padding='max_length',
-                #     truncation=True,
-                #     return_attention_mask=True,
-                #     return_tensors='pt',
-                # )
-                # question['bert_input_ids'] = encoding['input_ids'].flatten() 
-                # question['bert_attention_mask'] = encoding['attention_mask'].flatten()
+                question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
+                if "bert" in self.args.model_name.lower():
+                    encoding = self.bert_tokenizer.encode_plus(
+                        question["question"],
+                        add_special_tokens=True,
+                        max_length=self.args.max_ques_len,
+                        return_token_type_ids=False,
+                        padding='max_length',
+                        truncation=True,
+                        return_attention_mask=True,
+                        return_tensors='pt',
+                    )
+                    question['bert_input_ids'] = encoding['input_ids'].flatten() 
+                    question['bert_attention_mask'] = encoding['attention_mask'].flatten()
                 processed_questions.append(question)
-            # pickle.dump(processed_questions, open(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl", 'wb'))
 
         return processed_questions
 
@@ -370,7 +369,7 @@ class VQADataset(Dataset):
         for path_file in path_files:
             with open(path_file, 'r') as file:
                 single_questions = json.load(file)
-            stat_ques_list += single_questions['questions']
+            stat_ques_list += single_questions
 
         token_to_ix, pretrained_emb = tokenize(stat_ques_list, self.args)
         return token_to_ix, pretrained_emb
@@ -427,7 +426,7 @@ class VQADataset(Dataset):
         for path_file in path_files:
             with open(path_file, 'r') as file:
                 single_questions = json.load(file)
-            stat_ques_list += single_questions['questions']
+            stat_ques_list += single_questions
         question_list = {}
         for ques in stat_ques_list:
             question_list[ques["question_id"]] = ques["question"]
@@ -459,24 +458,34 @@ class VQADataset(Dataset):
         for ans in ans_freq_filter:
             tok2ans[tok2ans.__len__()] = ans
             ans2tok[ans] = ans2tok.__len__()
-            
-        question_type_map = {}
-        for ans in examples:
-            unique_answers = {answer['answer'] for answer in ans['answers']}
+        
+        answer_question_type_counts = defaultdict(lambda: defaultdict(int))
+        total_answer_counts = defaultdict(int)
+
+        for example in examples:
+            unique_answers = {answer['answer'] for answer in example['answers']}
             for answer_str in unique_answers:
                 ans_proc = prep_ans(answer_str)
-                if ans_proc in list(ans2tok.keys()):
+                if ans_proc in ans2tok:
                     ans_id = ans2tok[ans_proc]
-                    quetion_str = question_list[ans["question_id"]]
-                    question_type_str  = self.question_type_dict[quetion_str]
+                    total_answer_counts[ans_id] += 1  # Total appearances of each answer
+                    
+                    question_str = question_list[example["question_id"]]
+                    question_type_str = self.question_type_dict[question_str]
                     question_type_id = self.question_type_to_idx[question_type_str]
                     
-                    if ans_id not in question_type_map:
-                        question_type_map[ans_id] = []
-                    if question_type_id not in question_type_map[ans_id]:
-                        question_type_map[ans_id].append(question_type_id)
-                
-        return ans2tok, tok2ans, question_type_map
+                    # Count appearances of each answer across different question types
+                    answer_question_type_counts[ans_id][question_type_id] += 1
+                    
+        answer_percentages = defaultdict(dict)
+
+        for ans_id, question_type_counts in answer_question_type_counts.items():
+            total_appearances = total_answer_counts[ans_id]
+            for question_type_id, count in question_type_counts.items():
+                percentage = (count / total_appearances)
+                answer_percentages[ans_id][question_type_id] = percentage
+ 
+        return ans2tok, tok2ans, answer_percentages
     
     def load_question_type(self):
         question_type_dict = {}

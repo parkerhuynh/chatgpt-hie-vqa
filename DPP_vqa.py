@@ -178,7 +178,7 @@ def main(args):
                 print("STOP TRAINING")
                 break
             val_accuracy = validator(model,loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans, idx_to_question_type)
-            if val_accuracy >= best_acc:
+            if val_accuracy > best_acc:
                 stop_epoch = 0
                 best_acc = val_accuracy
                 val_final_result = collect_result(rank, epoch, "val", args)
@@ -219,8 +219,9 @@ def main(args):
 if __name__ == '__main__':
     model_dict = {
         0: "LSTM_VGG",
-        2: "LSTM_VGG_BERT_Hie",
-        1: "LSTM_VGG_LSTM_Hie"
+        1: "LSTM_VGG_LSTM_Hie",
+        2: "LSTM_VGG_BiLSTM_Hie",
+        3: "LSTM_VGG_BERT_Hie",
     }
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')

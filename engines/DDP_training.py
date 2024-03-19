@@ -80,27 +80,29 @@ def hie_trainer(args, model, rank, train_loader, optimizers, loss_fn, epoch, sam
     optimizer_for_question_type, optimizer_for_rest = optimizers
     vqa_loss_fn, question_type_loss_fn = loss_fn
     model.train()
-
-    ddp_loss = torch.zeros(6).to(rank)
+    ddp_loss = torch.zeros(7).to(rank)
     
     for batch_idx, batch in enumerate(train_loader):
         start_time = time.time()
         optimizer_for_question_type.zero_grad()
         optimizer_for_rest.zero_grad()
-        
         images = batch['image'].cuda()
         rnn_questions = batch['onehot_feature'].cuda()
         vqa_labels = batch['vqa_answer_label'].cuda()
-        bert_questions = batch['bert_input_ids'].cuda()
-        bert_attend_mask_questions = batch['bert_attention_mask'].cuda()
         question_type_label = batch['question_type_label'].cuda()
-        
+        if "bert" in args.model_name.lower():
+            bert_questions = batch['bert_input_ids'].cuda()
+            bert_attend_mask_questions = batch['bert_attention_mask'].cuda()
+        else:
+            bert_questions = None
+            bert_attend_mask_questions = None
+            
         vqa_output, question_type_output = model(images, rnn_questions, bert_questions, bert_attend_mask_questions)
+        del(images, rnn_questions, bert_questions, bert_attend_mask_questions)
+        
         vqa_loss = vqa_loss_fn(vqa_output, vqa_labels)
         question_type_loss = question_type_loss_fn(question_type_output, question_type_label)
-        
         loss = args.loss_weight*vqa_loss  + (1-args.loss_weight)*question_type_loss
-        
         loss.backward()
         optimizer_for_question_type.step()
         optimizer_for_rest.step()
@@ -109,59 +111,59 @@ def hie_trainer(args, model, rank, train_loader, optimizers, loss_fn, epoch, sam
              
         _, question_type_predictions = torch.max(question_type_output.data, 1)
     
-        ddp_loss[0] += loss.item()* images.size(0)
-        ddp_loss[1] += args.loss_weight*vqa_loss.item()* images.size(0)
-        ddp_loss[2] += (1-args.loss_weight)*question_type_loss.item()* images.size(0)
+        ddp_loss[0] += loss.item()* vqa_labels.size(0)
+        ddp_loss[1] += args.loss_weight*vqa_loss.item()* vqa_labels.size(0)
+        ddp_loss[2] += (1-args.loss_weight)*question_type_loss.item()* vqa_labels.size(0)
         ddp_loss[3] += batch_score.item()
         ddp_loss[4] += sum(x == y for x, y in zip(question_type_predictions, question_type_label))
         ddp_loss[5] += batch_count
+        ddp_loss[6] += 1
         
         end_time = time.time()
         elapsed_time = round(end_time - start_time,4)
         if args.wandb:
             wandb.log({
-                "total_loss": loss.item()* images.size(0),
-                "vqa_loss": args.loss_weight*vqa_loss.item()* images.size(0),
-                "question_type_loss": (1 - args.loss_weight)*question_type_loss.item()* images.size(0),
+                "total_loss": loss.item()* vqa_labels.size(0),
+                "vqa_loss": args.loss_weight*vqa_loss.item()* vqa_labels.size(0),
+                "question_type_loss": (1 - args.loss_weight)*question_type_loss.item()* vqa_labels.size(0),
             })
 
         if batch_idx % 50 == 0 and rank == 0:
             print(
                 f'     - Training | [{batch_idx+1}/{len(train_loader)}] | '
-                f'Loss: {loss.item() * images.size(0):.4f} | '
-                f'VQA Loss: {args.loss_weight * vqa_loss.item() * images.size(0):.4f} | '
-                f'Question Type Loss: {(1-args.loss_weight) * question_type_loss.item() * images.size(0):.4f} | '
+                f'Loss: {loss.item() * vqa_labels.size(0):.4f} | '
+                f'VQA Loss: {args.loss_weight * vqa_loss.item() * vqa_labels.size(0):.4f} | '
+                f'Question Type Loss: {(1-args.loss_weight) * question_type_loss.item() * vqa_labels.size(0):.4f} | '
                 f'Running time: {elapsed_time} seconds'
             )
             
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
-    total_batch = batch_idx+1
+    train_loss = ddp_loss[0] / ddp_loss[6]
+    train_vqa_loss = ddp_loss[1] / ddp_loss[6]
+    train_question_type_loss = ddp_loss[2] / ddp_loss[6]
+    vqa_accuracy = ddp_loss[3] / ddp_loss[5]
+    question_type_accuracy = ddp_loss[4] / ddp_loss[5]
+    
+    epoch_end_time = time.time()
+    epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
     if rank == 0:
-        train_loss = ddp_loss[0] / total_batch
-        train_vqa_loss = ddp_loss[1] / total_batch
-        train_question_type_loss = ddp_loss[2] / total_batch
-        vqa_accuracy = ddp_loss[3] / ddp_loss[5]
-        question_type_accuracy = ddp_loss[4] / ddp_loss[5]
-        
-        epoch_end_time = time.time()
-        epoch_elapsed_time = round(epoch_end_time - epoch_start_time, 4)
         print(
             f'==> Train | Epoch {epoch}: | '
-            f'Average loss: {train_loss:.4f} | '
-            f'VQA loss: {train_vqa_loss:.4f} | '
-            f'Question Type Loss: {train_question_type_loss:.4f} | '
-            f'Question Type Accuracy: {ddp_loss[4]}/{int(ddp_loss[5])} '
-            f'({100. * question_type_accuracy:.2f}%) | '
-            f'VQA Accuracy: {round(ddp_loss[3].item(), 2)}/{int(ddp_loss[5])} '
-            f'({100. * vqa_accuracy:.2f}%) | '
+            f'Average loss: {train_loss.item():.4f} | '
+            f'VQA loss: {train_vqa_loss.item():.4f} | '
+            f'Question Type Loss: {train_question_type_loss.item():.4f} | '
+            f'Question Type Accuracy: {ddp_loss[4].item()}/{int(ddp_loss[5].item())} '
+            f'({100. * question_type_accuracy.item():.2f}%) | '
+            f'VQA Accuracy: {round(ddp_loss[3].item(), 2)}/{int(ddp_loss[5].item())} '
+            f'({100. * vqa_accuracy.item():.2f}%) | '
             f'Running Time : {epoch_elapsed_time} seconds\n'
         )
         
-        if args.wandb:
-            wandb.log({"epoch":epoch,
-                "train_loss": train_loss,
-                "train_vqa_loss": train_vqa_loss,
-                "train_question_type_loss": train_question_type_loss,
-                "train_vqa_accuracy": vqa_accuracy,
-                "train_question_type_accuracy": question_type_accuracy
-                })
+    if args.wandb:
+        wandb.log({"epoch":epoch,
+            "train_loss": train_loss,
+            "train_vqa_loss": train_vqa_loss,
+            "train_question_type_loss": train_question_type_loss,
+            "train_vqa_accuracy": vqa_accuracy,
+            "train_question_type_accuracy": question_type_accuracy
+            })

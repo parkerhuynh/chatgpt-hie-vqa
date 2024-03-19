@@ -86,12 +86,17 @@ def hie_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans,
             images = batch['image'].cuda()
             rnn_questions = batch['onehot_feature'].cuda()
             vqa_labels = batch['vqa_answer_label'].cuda()
-            bert_questions = batch['bert_input_ids'].cuda()
-            bert_attend_mask_questions = batch['bert_attention_mask'].cuda()
             question_type_label = batch['question_type_label'].cuda()
             
+            if "bert" in args.model_name.lower():
+                bert_questions = batch['bert_input_ids'].cuda()
+                bert_attend_mask_questions = batch['bert_attention_mask'].cuda()
+            else:
+                bert_questions = None
+                bert_attend_mask_questions = None
             
             vqa_output, question_type_output = model(images, rnn_questions, bert_questions, bert_attend_mask_questions)
+            del(images, rnn_questions, bert_questions, bert_attend_mask_questions)
             vqa_loss = vqa_loss_fn(vqa_output, vqa_labels)
             question_type_loss = question_type_loss_fn(question_type_output, question_type_label)
             vqa_indices = torch.max(vqa_output, 1)[1].data # argmax
@@ -104,9 +109,9 @@ def hie_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans,
             elapsed_time = round(end_time - start_time,4)
             
             
-            ddp_loss[0] += loss.item()* images.size(0)
-            ddp_loss[1] += args.loss_weight*vqa_loss.item()* images.size(0)
-            ddp_loss[2] += (1-args.loss_weight)*question_type_loss.item()* images.size(0)
+            ddp_loss[0] += loss.item()* vqa_labels.size(0)
+            ddp_loss[1] += args.loss_weight*vqa_loss.item()* vqa_labels.size(0)
+            ddp_loss[2] += (1-args.loss_weight)*question_type_loss.item()* vqa_labels.size(0)
             ddp_loss[3] += batch_score.item()
             ddp_loss[4] += sum(x == y for x, y in zip(question_type_predictions, question_type_label))
             ddp_loss[5] += batch_count
@@ -150,4 +155,7 @@ def hie_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans,
                 "val_vqa_accuracy": vqa_accuracy,
                 "val_question_type_accuracy": question_type_accuracy
                 })
-        return vqa_accuracy, results
+        with open(os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_val.json"), "w") as f:
+            json.dump(results, f)
+        del(results, ddp_loss)
+        return vqa_accuracy
