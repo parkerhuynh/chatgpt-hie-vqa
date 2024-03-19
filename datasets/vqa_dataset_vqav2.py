@@ -256,7 +256,7 @@ class VQADataset(Dataset):
 
     def __len__(self):
         if self.args.debug:
-            return 3000
+            return 800
         
         return len(self.annotations) if self.split in ["val", "train"] else len(self.questions)
 
@@ -266,12 +266,13 @@ class VQADataset(Dataset):
             question_id = ann["question_id"]
             que = self.questions[question_id]
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
+            onehot_features = rnn_proc_ques(que["question"], self.token_to_ix, 20)
             
             example = {
                 'question_id': question_id,
                 # "bert_input_ids": que['bert_input_ids'],
                 # "bert_input_ids": que['bert_attention_mask'],
-                'onehot_feature': torch.from_numpy(que["onehot_features"]),
+                'onehot_feature': torch.from_numpy(onehot_features),
                 # 'question_type_str': que["question_type_str"],
                 # 'question_type_label': torch.tensor(que["question_type"], dtype=torch.long),
                 # 'vqa_answer_str': ann["vqa_answer_str"],
@@ -282,79 +283,81 @@ class VQADataset(Dataset):
             que = self.questions[idx]
             question_id = que["question_id"]
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
+            onehot_features = rnn_proc_ques(que["question"], self.token_to_ix, 20)
+            
             example = {
                 'question_id': question_id,
                 # "bert_input_ids": que['bert_attention_mask'],
-                'onehot_feature': torch.from_numpy(que["onehot_features"]),
+                'onehot_feature': torch.from_numpy(onehot_features),
                 "image": image
             }
 
         return example
     
     def load_questions(self):
-        if os.path.exists(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl"):
-            processed_questions = pickle.load(open(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl", 'rb'))
-        else:
-            folder_name = {
-            "train":"train2014", 
-            "val": "val2014",
-            "test": "train2014"
-            }
-            question_path = getattr(self.args, f"{self.split}_question")
-            with open(question_path, 'r') as file:
-                questions = json.load(file)
-            
-            if self.split in  ["train", "val"]:
-                processed_questions = {}
-                for question in questions:
-                    formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
-                    question['img_path'] = os.path.join(self.image_path, formatted_image_id)
-                    saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
-                    saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
-                    question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
-                    # question_type_str = self.question_type_dict[question["question"]]
-                    # question["question_type_str"] = question_type_str
-                    # question_type_idx = self.question_type_to_idx[question_type_str]
-                    # question["question_type"] = question_type_idx
-                    question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
-                    # encoding = self.bert_tokenizer.encode_plus(
-                    #     question["question"],
-                    #     add_special_tokens=True,
-                    #     max_length=self.args.max_ques_len,
-                    #     return_token_type_ids=False,
-                    #     padding='max_length',
-                    #     truncation=True,
-                    #     return_attention_mask=True,
-                    #     return_tensors='pt',
-                    # )
-                    # question['bert_input_ids'] = encoding['input_ids'].flatten() 
-                    # question['bert_attention_mask'] = encoding['attention_mask'].flatten()
-                    processed_questions[question["question_id"]] = question
+        # if os.path.exists(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl"):
+        #     processed_questions = pickle.load(open(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl", 'rb'))
+        # else:
+        folder_name = {
+        "train":"train2014", 
+        "val": "val2014",
+        "test": "train2014"
+        }
+        question_path = getattr(self.args, f"{self.split}_question")
+        with open(question_path, 'r') as file:
+            questions = json.load(file)
+        
+        if self.split in  ["train", "val"]:
+            processed_questions = {}
+            for question in questions:
+                formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
+                question['img_path'] = os.path.join(self.image_path, formatted_image_id)
+                saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
+                saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
+                question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
+                # question_type_str = self.question_type_dict[question["question"]]
+                # question["question_type_str"] = question_type_str
+                # question_type_idx = self.question_type_to_idx[question_type_str]
+                # question["question_type"] = question_type_idx
+                # question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
+                # encoding = self.bert_tokenizer.encode_plus(
+                #     question["question"],
+                #     add_special_tokens=True,
+                #     max_length=self.args.max_ques_len,
+                #     return_token_type_ids=False,
+                #     padding='max_length',
+                #     truncation=True,
+                #     return_attention_mask=True,
+                #     return_tensors='pt',
+                # )
+                # question['bert_input_ids'] = encoding['input_ids'].flatten() 
+                # question['bert_attention_mask'] = encoding['attention_mask'].flatten()
+                processed_questions[question["question_id"]] = question
 
-                    
-            else:
-                processed_questions = []
-                for question in questions:
-                    formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
-                    question['img_path'] = os.path.join(self.image_path, formatted_image_id)
-                    saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
-                    saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
-                    question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
-                    question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
-                    # encoding = self.bert_tokenizer.encode_plus(
-                    #     question["question"],
-                    #     add_special_tokens=True,
-                    #     max_length=self.args.max_ques_len,
-                    #     return_token_type_ids=False,
-                    #     padding='max_length',
-                    #     truncation=True,
-                    #     return_attention_mask=True,
-                    #     return_tensors='pt',
-                    # )
-                    # question['bert_input_ids'] = encoding['input_ids'].flatten() 
-                    # question['bert_attention_mask'] = encoding['attention_mask'].flatten()
-                    processed_questions.append(question)
-            pickle.dump(processed_questions, open(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl", 'wb'))
+                
+        else:
+            processed_questions = []
+            for question in questions:
+                formatted_image_id = f"COCO_{folder_name[self.split]}_" + str(question["image_id"]).zfill(12) + ".jpg"
+                question['img_path'] = os.path.join(self.image_path, formatted_image_id)
+                saved_image_path = self.image_path.replace(f"/{folder_name[self.split]}", f"/saved_{folder_name[self.split]}")
+                saved_formatted_image_id = formatted_image_id.replace("jpg", "pkl")
+                question['saved_img_path'] = os.path.join(saved_image_path, saved_formatted_image_id)
+                # question["onehot_features"] = rnn_proc_ques(question["question"], self.token_to_ix, 20)
+                # encoding = self.bert_tokenizer.encode_plus(
+                #     question["question"],
+                #     add_special_tokens=True,
+                #     max_length=self.args.max_ques_len,
+                #     return_token_type_ids=False,
+                #     padding='max_length',
+                #     truncation=True,
+                #     return_attention_mask=True,
+                #     return_tensors='pt',
+                # )
+                # question['bert_input_ids'] = encoding['input_ids'].flatten() 
+                # question['bert_attention_mask'] = encoding['attention_mask'].flatten()
+                processed_questions.append(question)
+            # pickle.dump(processed_questions, open(f"./datasets/proccessed_questions_{self.args.dataset}_{self.split}.pkl", 'wb'))
 
         return processed_questions
 

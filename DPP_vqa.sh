@@ -22,4 +22,5 @@ CUDA_VISIBLE_DEVICES=0,1 WORLD_SIZE=$NPROC_PER_NODE python3 -m torch.distributed
     --early_stop 5 \
     --batch-size 512 \
     --val-batch-size 512 \
-    --test-batch-size 512
+    --test-batch-size 512 \
+    --wandb

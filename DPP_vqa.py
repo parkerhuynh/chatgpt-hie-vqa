@@ -91,9 +91,9 @@ def main(args):
     val_sample = DistributedSampler(val_dataset, rank=rank, num_replicas=world_size)
     test_sample = DistributedSampler(test_dataset, rank=rank, num_replicas=world_size)
 
-    train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample, 'shuffle': False}
-    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample, 'shuffle': False}
-    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample, 'shuffle': False}
+    train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':4}
+    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':4}
+    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':4}
     
 
     train_loader = torch.utils.data.DataLoader(train_dataset,**train_kwargs)
@@ -178,8 +178,7 @@ def main(args):
                 print("STOP TRAINING")
                 break
             val_accuracy = validator(model,loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans, idx_to_question_type)
-            
-            if val_accuracy > best_acc:
+            if val_accuracy >= best_acc:
                 stop_epoch = 0
                 best_acc = val_accuracy
                 val_final_result = collect_result(rank, epoch, "val", args)
@@ -197,7 +196,7 @@ def main(args):
                     print(f'    - saved model : {os.path.join(args.result_path, "model.pth")}')
                     del(val_predictions, test_predictions)
                     if args.wandb:
-                        wandb.log({"best_accuracy": best_acc})
+                        wandb.log({"best_accuracy": best_acc, "best_epoch": epoch})
                         wandb.save(os.path.join(args.result_path, "test_predictions.csv"))
                         wandb.save(os.path.join(args.result_path, "val_predictions.csv"))
                         

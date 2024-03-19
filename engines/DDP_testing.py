@@ -17,20 +17,20 @@ def normal_tester(model, rank, test_loader, args, epoch,  idx_to_vqa_ans, idx_to
             rnn_questions = batch['onehot_feature'].cuda()
             images = batch['image'].cuda()
             
-        #     vqa_output = model(images, rnn_questions)
-        #     vqa_indices = torch.max(vqa_output, 1)[1].data # argmax
+            vqa_output = model(images, rnn_questions)
+            vqa_indices = torch.max(vqa_output, 1)[1].data # argmax
             
-        #     if  rank == 0:
-        #         print(f'     - Testing | [{str(batch_idx).zfill(3)}/{str(len(test_loader)).zfill(3)}]')
-        #     for ques_id, pres in zip(question_id, vqa_indices):
-        #         item = {
-        #             "question_id": ques_id.item(),
-        #             "prediction": idx_to_vqa_ans[str(pres.item())],
-        #             }
-        #         results.append(item)
-        # with open(os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_test.json"), "w") as f:
-        #     json.dump(results, f)
-        # del(results)
+            if  rank == 0:
+                print(f'     - Testing | [{str(batch_idx).zfill(3)}/{str(len(test_loader)).zfill(3)}]')
+            for ques_id, pres in zip(question_id, vqa_indices):
+                item = {
+                    "question_id": ques_id.item(),
+                    "prediction": idx_to_vqa_ans[str(pres.item())],
+                    }
+                results.append(item)
+        with open(os.path.join(args.temp_result_path, f"temp_result_epoch_{epoch}_rank_{rank}_test.json"), "w") as f:
+            json.dump(results, f)
+        del(results)
     
 
 @torch.no_grad()
