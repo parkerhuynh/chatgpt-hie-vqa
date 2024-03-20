@@ -118,17 +118,17 @@ def main(args):
         question_type_params = list(model.QuestionType.parameters())
         base_params = [p for n, p in model.named_parameters() if "QuestionType" not in n]
         
-        optimizer_for_question_type = AdamW(question_type_params, lr=args.qt_lr)
-        scheduler_for_question_type = LinearLR(optimizer_for_question_type, start_lr=args.qt_lr, end_lr=args.qt_lr/10, num_epochs=args.epochs)
+        optimizer_for_question_type = AdamW(question_type_params, lr=args.start_qt_lr)
+        scheduler_for_question_type = LinearLR(optimizer_for_question_type, start_lr=args.start_qt_lr, end_lr=args.end_qt_lr, num_epochs=args.epochs)
         
-        optimizer_for_rest = optim.Adam(base_params, lr=args.lr)
-        scheduler_for_rest = LinearLR(optimizer_for_rest, start_lr=args.lr, end_lr=args.lr/10, num_epochs=args.epochs)
+        optimizer_for_rest = optim.Adam(base_params, lr=args.start_lr)
+        scheduler_for_rest = LinearLR(optimizer_for_rest, start_lr=args.start_lr, end_lr=args.end_lr, num_epochs=args.epochs)
         
         optimizers = [optimizer_for_question_type, optimizer_for_rest]
         
     else:
-        optimizer = AdamW(model.parameters(), lr=args.lr)
-        scheduler = LinearLR(optimizer, start_lr=args.lr, end_lr=args.lr/100, num_epochs=args.epochs)
+        optimizer = AdamW(model.parameters(), args.start_lr)
+        scheduler = LinearLR(optimizer, start_lr=args.start_lr, end_lr=args.end_lr, num_epochs=args.epochs)
         optimizers = [optimizer, None]
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu]).to(device)
     
@@ -233,10 +233,6 @@ if __name__ == '__main__':
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=500 , metavar='N',
                         help='number of epochs to train (default: 14)')
-    parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
-                        help='learning rate (default: 1.0)')
-    parser.add_argument('--qt_lr', type=float, default=1e-4, metavar='LR',
-                        help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.8, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -261,6 +257,15 @@ if __name__ == '__main__':
     parser.add_argument('--world_size', default=1, type=int)
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--loss_weight', type=float, default=0.5, metavar='LR',
+                        help='learning rate (default: 1.0)')
+    
+    parser.add_argument('--start_lr', type=float, default=1e-4, metavar='LR',
+                        help='learning rate (default: 1.0)')
+    parser.add_argument('--end_lr', type=float, default=1e-5, metavar='LR',
+                        help='learning rate (default: 1.0)')
+    parser.add_argument('--start_qt_lr', type=float, default=1e-4, metavar='LR',
+                        help='learning rate (default: 1.0)')
+    parser.add_argument('--end_qt_lr', type=float, default=1e-5, metavar='LR',
                         help='learning rate (default: 1.0)')
     args = parser.parse_args()
 

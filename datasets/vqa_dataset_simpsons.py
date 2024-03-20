@@ -494,7 +494,7 @@ class VQADataset(Dataset):
                 ans_id = ans2tok[ans_proc]
                 quetion_str = question_list[ans["id"]]
                 question_type_str  = self.question_type_dict[quetion_str]
-                question_type_id = self.question_type_to_idx[question_type_str]
+                question_type_id = self.question++_type_to_idx[question_type_str]
                 
                 if ans_id not in question_type_map:
                     question_type_map[ans_id] = []
