@@ -631,10 +631,11 @@ def image_preprocessing(image_path, saved_image_path, transform):
         image = pickle.load(open(saved_image_path, 'rb'))
     else:
         image = Image.open(image_path).convert('RGB')
+        image = transform(image)
         pickle.dump(image, open(saved_image_path, 'wb'))
         print(f"saving {saved_image_path}")
     # image = Image.open(image_path).convert('RGB')
-    image = transform(image)
+    
     return image
 
 def proc_ans(ans, ans_to_ix):

@@ -91,9 +91,9 @@ def main(args):
     val_sample = DistributedSampler(val_dataset, rank=rank, num_replicas=world_size)
     test_sample = DistributedSampler(test_dataset, rank=rank, num_replicas=world_size)
 
-    train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':4}
-    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':4}
-    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':4}
+    train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':12}
+    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':12}
+    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':12}
     
 
     train_loader = torch.utils.data.DataLoader(train_dataset,**train_kwargs)
