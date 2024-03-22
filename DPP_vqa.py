@@ -47,7 +47,7 @@ def main(args):
     if args.wandb:
         wandb.init(
             project="VQA new",
-            group=f"{args.model_name}-{args.dataset}",
+            group=f"{args.model_name}-{args.dataset}_v{args.version}",
             name= f"rank-{rank}",
             config=vars(args))
     device = torch.device(args.device)
@@ -77,6 +77,7 @@ def main(args):
     cudnn.benchmark = True
     
     train_dataset, val_dataset, test_dataset = create_vqa_datasets(args, rank)
+    
     if rank == 0:
         print(f"    - Number of Traning Sample: {len(train_dataset)}")
         print(f"    - Number of Validation Sample: {len(val_dataset)}")
@@ -91,9 +92,9 @@ def main(args):
     val_sample = DistributedSampler(val_dataset, rank=rank, num_replicas=world_size)
     test_sample = DistributedSampler(test_dataset, rank=rank, num_replicas=world_size)
 
-    train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':12}
-    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':12}
-    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':12}
+    train_kwargs = {'batch_size': args.batch_size, 'sampler': train_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':4}
+    val_kwargs = {'batch_size': args.val_batch_size, 'sampler': val_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':4}
+    test_kwargs = {'batch_size': args.test_batch_size, 'sampler': test_sample, 'shuffle': False, 'pin_memory' :True, 'num_workers':4}
     
 
     train_loader = torch.utils.data.DataLoader(train_dataset,**train_kwargs)
@@ -267,7 +268,9 @@ if __name__ == '__main__':
                         help='learning rate (default: 1.0)')
     parser.add_argument('--end_qt_lr', type=float, default=1e-5, metavar='LR',
                         help='learning rate (default: 1.0)')
+    parser.add_argument('--version', type=int, default=0)
     args = parser.parse_args()
+    
 
     #Check data path
     model_name = model_dict[args.model]
@@ -276,8 +279,8 @@ if __name__ == '__main__':
     
     
     
-    temp_result_path = f"./tem_results/{args.dataset}/{args.model_name}"
-    result_path = f"./results/{args.dataset}/{args.model_name}"
+    temp_result_path = f"./tem_results/{args.dataset}/{args.model_name}_v{args.version}"
+    result_path = f"./results/{args.dataset}/{args.model_name}_v{args.version}"
     args.temp_result_path = temp_result_path
     args.result_path = result_path
     if "hie" in args.model_name.lower():

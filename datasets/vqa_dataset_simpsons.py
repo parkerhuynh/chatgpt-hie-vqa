@@ -289,7 +289,9 @@ class VQADataset(Dataset):
             )
             ans_iter, answer_str = proc_ans(ann, self.vqa_ans_to_idx)
             image = image_preprocessing(que["img_path"], que["saved_img_path"], self.transform)
-            
+            # print("-"*100)
+            # print(ans_iter)
+            # print(answer_str)
             example = {
                 'img_path': que["img_path"],
                 'question_id': question_id,
@@ -641,6 +643,7 @@ def image_preprocessing(image_path, saved_image_path, transform):
 def proc_ans(ans, ans_to_ix):
     ans_score = np.zeros(ans_to_ix.__len__(), np.float32)
     ans_proc = prep_ans(ans['answer'])
+    
     ans_score[ans_to_ix[ans_proc]] = 1
     return ans_score, ans_proc
 

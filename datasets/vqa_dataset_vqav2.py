@@ -458,34 +458,23 @@ class VQADataset(Dataset):
         for ans in ans_freq_filter:
             tok2ans[tok2ans.__len__()] = ans
             ans2tok[ans] = ans2tok.__len__()
-        
-        answer_question_type_counts = defaultdict(lambda: defaultdict(int))
-        total_answer_counts = defaultdict(int)
-
-        for example in examples:
-            unique_answers = {answer['answer'] for answer in example['answers']}
+            
+        question_type_map = {}
+        for ans in examples:
+            unique_answers = {answer['answer'] for answer in ans['answers']}
             for answer_str in unique_answers:
                 ans_proc = prep_ans(answer_str)
-                if ans_proc in ans2tok:
+                if ans_proc in list(ans2tok.keys()):
                     ans_id = ans2tok[ans_proc]
-                    total_answer_counts[ans_id] += 1  # Total appearances of each answer
-                    
-                    question_str = question_list[example["question_id"]]
-                    question_type_str = self.question_type_dict[question_str]
+                    quetion_str = question_list[ans["question_id"]]
+                    question_type_str  = self.question_type_dict[quetion_str]
                     question_type_id = self.question_type_to_idx[question_type_str]
                     
-                    # Count appearances of each answer across different question types
-                    answer_question_type_counts[ans_id][question_type_id] += 1
-                    
-        answer_percentages = defaultdict(dict)
-
-        for ans_id, question_type_counts in answer_question_type_counts.items():
-            total_appearances = total_answer_counts[ans_id]
-            for question_type_id, count in question_type_counts.items():
-                percentage = (count / total_appearances)
-                answer_percentages[ans_id][question_type_id] = percentage
- 
-        return ans2tok, tok2ans, answer_percentages
+                    if ans_id not in question_type_map:
+                        question_type_map[ans_id] = []
+                    if question_type_id not in question_type_map[ans_id]:
+                        question_type_map[ans_id].append(question_type_id)
+        return ans2tok, tok2ans, question_type_map
     
     def load_question_type(self):
         question_type_dict = {}

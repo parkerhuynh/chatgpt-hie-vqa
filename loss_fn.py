@@ -1,9 +1,11 @@
 from torch import nn
 import torch
+
 def instance_bce_with_logits(logits, labels):
     assert logits.dim() == 2
-
+    criterion = nn.BCEWithLogitsLoss()
     loss = nn.functional.binary_cross_entropy_with_logits(logits, labels)
+    # loss = criterion(logits, labels)
     loss *= labels.size(1)
     return loss
 
