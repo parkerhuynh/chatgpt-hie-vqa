@@ -30,11 +30,11 @@ def normal_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_a
             vqa_loss = vqa_loss_fn(vqa_output, vqa_labels)
             
             print_vqa_loss = vqa_loss.item()* question_id.size(0)
-            batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
+            batch_score , batch_count= compute_score_with_logits_paddingremoved(args, vqa_output, vqa_labels)
 
             logits = torch.max(vqa_output, 1)[1].data # argmax
             ddp_loss[0] += print_vqa_loss
-            ddp_loss[1] += batch_score.item()
+            ddp_loss[1] += batch_score
             
             ddp_loss[2] += batch_count
             del(batch_score, batch_count)
@@ -102,7 +102,7 @@ def hie_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans,
             vqa_indices = torch.max(vqa_output, 1)[1].data # argmax
             
             loss = args.loss_weight*vqa_loss  + (1-args.loss_weight)*question_type_loss
-            batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
+            batch_score , batch_count= compute_score_with_logits_paddingremoved(args, vqa_output, vqa_labels)
                 
             _, question_type_predictions = torch.max(question_type_output.data, 1)
             end_time = time.time()
@@ -112,7 +112,7 @@ def hie_validator(model, loss_fn, rank, val_loader, epoch, args, idx_to_vqa_ans,
             ddp_loss[0] += loss.item()* vqa_labels.size(0)
             ddp_loss[1] += args.loss_weight*vqa_loss.item()* vqa_labels.size(0)
             ddp_loss[2] += (1-args.loss_weight)*question_type_loss.item()* vqa_labels.size(0)
-            ddp_loss[3] += batch_score.item()
+            ddp_loss[3] += batch_score
             ddp_loss[4] += sum(x == y for x, y in zip(question_type_predictions, question_type_label))
             ddp_loss[5] += batch_count
             

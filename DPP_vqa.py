@@ -133,8 +133,10 @@ def main(args):
         optimizers = [optimizer, None]
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu]).to(device)
     
-        
-    vqa_loss_fn = instance_bce_with_logits
+    if args.dataset in ["simpsons"]:
+        vqa_loss_fn = torch.nn.CrossEntropyLoss()
+    else:
+        vqa_loss_fn = instance_bce_with_logits
     question_type_loss_fn = torch.nn.CrossEntropyLoss().cuda()
     loss_fn = [vqa_loss_fn, question_type_loss_fn]
     

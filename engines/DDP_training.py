@@ -34,10 +34,10 @@ def normal_trainer(args, model, rank, train_loader, optimizers, loss_fn, epoch, 
         print_vqa_loss = vqa_loss.item()* vqa_labels.size(0)
         optimizer.step()
         
-        batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
+        batch_score , batch_count= compute_score_with_logits_paddingremoved(args, vqa_output, vqa_labels)
     
         ddp_loss[0] += print_vqa_loss
-        ddp_loss[1] += batch_score.item() 
+        ddp_loss[1] += batch_score 
         ddp_loss[2] += batch_count
         ddp_loss[3] += 1
         end_time = time.time()
@@ -107,14 +107,14 @@ def hie_trainer(args, model, rank, train_loader, optimizers, loss_fn, epoch, sam
         optimizer_for_question_type.step()
         optimizer_for_rest.step()
         
-        batch_score , batch_count= compute_score_with_logits_paddingremoved(vqa_output, vqa_labels)
+        batch_score , batch_count= compute_score_with_logits_paddingremoved(args, vqa_output, vqa_labels)
              
         _, question_type_predictions = torch.max(question_type_output.data, 1)
     
         ddp_loss[0] += loss.item()* vqa_labels.size(0)
         ddp_loss[1] += args.loss_weight*vqa_loss.item()* vqa_labels.size(0)
         ddp_loss[2] += (1-args.loss_weight)*question_type_loss.item()* vqa_labels.size(0)
-        ddp_loss[3] += batch_score.item()
+        ddp_loss[3] += batch_score
         ddp_loss[4] += sum(x == y for x, y in zip(question_type_predictions, question_type_label))
         ddp_loss[5] += batch_count
         ddp_loss[6] += 1

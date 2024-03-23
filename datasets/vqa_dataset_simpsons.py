@@ -302,7 +302,8 @@ class VQADataset(Dataset):
                 'question_type_str': question_type_str,
                 'question_type_label': torch.tensor(question_type_ids, dtype=torch.long),
                 'vqa_answer_str': answer_str,
-                'vqa_answer_label': torch.from_numpy(ans_iter) ,
+                'vqa_answer_label': torch.tensor(ans_iter, dtype=torch.long),
+                # 'vqa_answer_label': torch.from_numpy(ans_iter) ,
                 "image": image
             }
         else:
@@ -496,7 +497,7 @@ class VQADataset(Dataset):
                 ans_id = ans2tok[ans_proc]
                 quetion_str = question_list[ans["id"]]
                 question_type_str  = self.question_type_dict[quetion_str]
-                question_type_id = self.question++_type_to_idx[question_type_str]
+                question_type_id = self.question_type_to_idx[question_type_str]
                 
                 if ans_id not in question_type_map:
                     question_type_map[ans_id] = []
@@ -641,10 +642,10 @@ def image_preprocessing(image_path, saved_image_path, transform):
     return image
 
 def proc_ans(ans, ans_to_ix):
-    ans_score = np.zeros(ans_to_ix.__len__(), np.float32)
+    # ans_score = np.zeros(ans_to_ix.__len__(), np.float32)
     ans_proc = prep_ans(ans['answer'])
     
-    ans_score[ans_to_ix[ans_proc]] = 1
-    return ans_score, ans_proc
+    # ans_score[ans_to_ix[ans_proc]] = 1
+    return ans_to_ix[ans_proc], ans_proc
 
     
