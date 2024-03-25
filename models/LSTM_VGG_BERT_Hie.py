@@ -56,7 +56,7 @@ class QuestionType(nn.Module):
 class CustomLayer(nn.Module):
     def __init__(self, question_type_map_dict, ans_vocab_size, question_type_output_di):
         super(CustomLayer, self).__init__()
-        
+        print(question_type_map_dict)
         unique_question_types = set()
         for ans_id, q_types in question_type_map_dict.items():
             unique_question_types.update(q_types.keys())

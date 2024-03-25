@@ -1,22 +1,20 @@
 #!/bin/bash
 
-# Constants for Distributed Training Configuration
 NNODES=1
 MASTER_ADDR='localhost'
 MASTER_PORT=7778
-NPROC_PER_NODE=2 # Number of processes per node
-# Variables for the command
+NPROC_PER_NODE=2
 NODE_RANK=0
-MODEL=3
+MODEL=4
 DATASET=vqav2
 DATAPATH="/home/ndhuynh/data/vqav2"
 START_QUESTION_TYPE_LR=1e-4
-END_QUESTION_TYPE_LR=1e-5
+END_QUESTION_TYPE_LR=1e-6
 START_LR=1e-4
-END_LR=1e-5
-# Define arrays for different start_lr and end_lr values
-LOSS_WEIGHT_VALUES=(0.9 0.8 0.7 0.6)
-VERSION_VALUES=(0 1 2 3 4)
+END_LR=1e-6
+
+LOSS_WEIGHT_VALUES=(0.5 0.7 0.8 0.9 0.6)
+VERSION_VALUES=(210 211 212 213 214)
 
 # Run the loop for each start_lr and end_lr combination
 for i in "${!LOSS_WEIGHT_VALUES[@]}"; do
@@ -30,8 +28,8 @@ for i in "${!LOSS_WEIGHT_VALUES[@]}"; do
         --model "$MODEL" \
         --dataset "$DATASET" \
         --datapath "$DATAPATH" \
-        --epochs 50 \
-        --validation_epoch 20 \
+        --epochs 70 \
+        --validation_epoch 15 \
         --early_stop 10 \
         --batch-size 256 \
         --val-batch-size 256 \
