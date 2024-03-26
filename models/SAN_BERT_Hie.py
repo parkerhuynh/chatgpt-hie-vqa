@@ -6,7 +6,9 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 import torch.nn.functional as F
-
+from models.onehot_layer import OneHotLayer
+from models.probability_layer import ProbabilityLayer
+from transformers import BertForSequenceClassification
 class ImageEncoder(nn.Module):
     def __init__(self, image_feature_output=1024):
         super(ImageEncoder, self).__init__()
@@ -23,6 +25,16 @@ class ImageEncoder(nn.Module):
         image = image.view(-1, 512, 196).transpose(1, 2)
         image_embedding = self.fc(image)
         return image_embedding
+
+class QuestionType(nn.Module):
+    def __init__(self, question_type_output_dim):
+        super(QuestionType, self).__init__()
+        self.BERT_classification = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=question_type_output_dim)
+
+    def forward(self, question_bert, bert_attend_mask_questions):
+        output = self.BERT_classification(question_bert, attention_mask=bert_attend_mask_questions)
+        logits = output.logits
+        return logits
 
 
 class QuestionEncoder(nn.Module):
@@ -63,11 +75,11 @@ class Attention(nn.Module):
         u = vi_attended + vq
         return u
 
-class SAN(nn.Module):
+class SAN_BERT_Hie(nn.Module):
     # num_attention_layer and num_mlp_layer not implemented yet
-    def __init__(self, args,question_vocab_size, ans_vocab_size):          # embed_size, word_embed_size, num_layers, hidden_size
-        super(SAN, self).__init__()
-
+    def __init__(self, args,question_vocab_size, ans_vocab_size, question_type_map, question_type_output_dim):
+        super(SAN_BERT_Hie, self).__init__()
+        self.args = args
         self.img_encoder = ImageEncoder(args.image_feature_output)
         self.word_embeddings = nn.Embedding(question_vocab_size, args.word_embedding)
         self.ques_encoder = QuestionEncoder(
@@ -75,13 +87,27 @@ class SAN(nn.Module):
             rnn_hidden_size = args.rnn_hidden_size)
         
         self.san = nn.ModuleList([Attention(d=args.image_feature_output, k=args.att_ff_size)] * args.num_att_layers)
-        self.mlp = nn.Sequential(
+        self.mlp_1 = nn.Sequential(
                 nn.Linear(args.image_feature_output, 1000),
                 nn.Dropout(p=0.5),
-                nn.Tanh(),
+                nn.ReLU(),
                 nn.Linear(1000, ans_vocab_size))
+        self.QuestionType = QuestionType(question_type_output_dim)
+        if args.layer_name == "onehot":
+            print("onehot")
+            self.CustomLayer = OneHotLayer(question_type_map, ans_vocab_size, question_type_output_dim)
+        else:
+            print("probability")
+            self.CustomLayer = ProbabilityLayer(question_type_map, ans_vocab_size, question_type_output_dim)
+        if args.architecture == 1:
+            self.mlp_2 = nn.Sequential(
+                nn.Linear(ans_vocab_size, 1000),
+                nn.Dropout(p=0.5, inplace=True),
+                nn.ReLU(),
+                nn.Linear(1000, ans_vocab_size)
+            )
 
-    def forward(self, images, questions):
+    def forward(self, images, questions, question_bert, bert_attend_mask_questions):
 
         image_embeddings = self.img_encoder(images)
         embeds = self.word_embeddings(questions)
@@ -91,6 +117,9 @@ class SAN(nn.Module):
         u = ques_embeddings
         for attn_layer in self.san:
             u = attn_layer(vi, u)
-            
-        vqa_output = self.mlp(u)
-        return vqa_output
+        vqa_output = self.mlp_1(u)
+        question_type_output = self.QuestionType(question_bert, bert_attend_mask_questions)
+        vqa_output = self.CustomLayer(question_type_output, vqa_output)
+        if self.args.architecture == 1:
+            vqa_output = self.mlp_2(vqa_output)
+        return vqa_output, question_type_output

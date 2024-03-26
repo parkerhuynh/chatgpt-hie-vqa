@@ -2,7 +2,7 @@ import torch
 import torchvision.transforms as transforms
 import torch.nn as nn
 import torchvision.models as models
-from transformers import BertTokenizer, BertForSequenceClassification, AdamW
+from transformers import BertForSequenceClassification
 from models.onehot_layer import OneHotLayer
 from models.probability_layer import ProbabilityLayer
 

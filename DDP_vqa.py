@@ -230,6 +230,7 @@ if __name__ == '__main__':
         2: "LSTM_VGG_BiLSTM_Hie",
         3: "LSTM_VGG_BERT_Hie",
         4: "SAN",
+        5: "SAN_BERT_Hie"
     }
     layer_names = {
         1: "onehot",
@@ -301,14 +302,14 @@ if __name__ == '__main__':
         result_path = f"./results/{args.dataset}/{args.model_name}/layer_{layer_name}-architecture{args.architecture}-{args.version}"
         args.temp_result_path = temp_result_path
         args.result_path = result_path
-        args.wandb_group_name=f"{args.model_name}--{args.dataset}-{layer_name}-architecture{args.architecture}_{args.version}"
+        args.wandb_group_name=f"{args.model_name}--{args.dataset}-{layer_name}-architecture{args.architecture}"
     else:
         args.answer_dict = f"./datasets/answer_dicts_{args.dataset}.json"
         temp_result_path = f"./tem_results/{args.dataset}/{args.model_name}/{args.version}"
         result_path = f"./results/{args.dataset}/{args.model_name}/{args.version}"
         args.temp_result_path = temp_result_path
         args.result_path = result_path
-        args.wandb_group_name=f"{args.model_name}--{args.dataset}--{args.version}"
+        args.wandb_group_name=f"{args.model_name}--{args.dataset}"
     
     config_model = yaml.safe_load(open(f'./config/models/{model_name}.yaml'))
     dataset_config = yaml.safe_load(open(f'./config/datasets/{args.dataset}.yaml'))

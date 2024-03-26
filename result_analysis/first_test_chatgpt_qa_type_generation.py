@@ -27,9 +27,9 @@ def main():
             openKey = line
             
     
-    df = pd.read_csv('/home/ngoc/githubs/chatgpt-hie-vqa/result_analysis/second_vqav2_qa_prompting.csv')
+    df = pd.read_csv('/home/ngoc/githubs/chatgpt-hie-vqa/result_analysis/new_qa_pairs_for_evaluation.csv')
     
-    sub_df = df[30000:]
+    sub_df = df[:30000]
     for idx, row in enumerate(sub_df.to_dict("records")):
         print(f'[{idx}/{len(sub_df)}]')
         
@@ -43,9 +43,9 @@ def main():
                 # Create a dictionary with the current key-value pair
                 data = {"question": question_str,
                         "answer": answer_str,
-                        "question_type":chatgpt_question_type}
+                        "question_answer_type":chatgpt_question_type}
 
-                file_name = "vqav2_qa_type_3.json"
+                file_name = "new_1.json"
                 with open(file_name, 'a') as json_file:
                     json.dump(data, json_file)
                     json_file.write('\n')

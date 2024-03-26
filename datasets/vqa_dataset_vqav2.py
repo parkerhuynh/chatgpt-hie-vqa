@@ -650,8 +650,8 @@ def image_preprocessing(image_path, saved_image_path, transform):
     #     image = Image.open(image_path).convert('RGB')
     #     image = transform(image)
     #     pickle.dump(image, open(saved_image_path, 'wb'))
-    #     print(f"saving {saved_image_path}")
-    # # image = Image.open(image_path).convert('RGB')
+        # print(f"saving {saved_image_path}")
+    # image = Image.open(image_path).convert('RGB')
     image = Image.open(image_path).convert('RGB')
     image = transform(image)
     

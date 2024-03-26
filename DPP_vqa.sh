@@ -5,7 +5,7 @@ MASTER_ADDR='localhost'
 MASTER_PORT=7778
 NPROC_PER_NODE=1
 NODE_RANK=0
-MODEL=4
+MODEL=5
 DATASET=vqav2
 DATAPATH="/home/ngoc/data/vqav2"
 START_QUESTION_TYPE_LR=1e-4
@@ -24,11 +24,14 @@ echo "LAYER: $LAYER_VERSION"
 echo "DATASET: $DATASET"
 echo "MODEL: $MODEL"
 echo "ARCHITECTURE_VERSION: $ARCHITECTURE_VERSION"
+LOG_FILE="logs/model_${MODEL}_${VERSION}.log"
 
-# Setting the log file name
-LOG_FILE="${VERSION}.log"
-
-CUDA_VISIBLE_DEVICES=0 WORLD_SIZE=$NPROC_PER_NODE python3 -m torch.distributed.launch --nproc_per_node=$NPROC_PER_NODE --node_rank=$NODE_RANK --nnodes=$NNODES --master_addr=$MASTER_ADDR --master_port=$MASTER_PORT \
+CUDA_VISIBLE_DEVICES=0 WORLD_SIZE=$NPROC_PER_NODE python3 -m torch.distributed.launch \
+    --nproc_per_node=$NPROC_PER_NODE \
+    --node_rank=$NODE_RANK \
+    --nnodes=$NNODES \
+    --master_addr=$MASTER_ADDR \
+    --master_port=$MASTER_PORT \
     --use_env DDP_vqa.py \
     --model "$MODEL" \
     --dataset "$DATASET" \
@@ -47,7 +50,7 @@ CUDA_VISIBLE_DEVICES=0 WORLD_SIZE=$NPROC_PER_NODE python3 -m torch.distributed.l
     --loss_weight $LOSS_WEIGHT \
     --layer $LAYER_VERSION \
     --architecture $ARCHITECTURE_VERSION \
-    # --wandb \
-    --debug > "$LOG_FILE" 2>&1
+    --debug \
+    > "$LOG_FILE" 2>&1
+    
 
-echo "Output captured in $LOG_FILE"
