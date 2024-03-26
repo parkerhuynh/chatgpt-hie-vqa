@@ -644,14 +644,16 @@ def rnn_proc_ques(ques, token_to_ix, max_token):
     return ques_ix
 
 def image_preprocessing(image_path, saved_image_path, transform):
-    if os.path.exists(saved_image_path):
-        image = pickle.load(open(saved_image_path, 'rb'))
-    else:
-        image = Image.open(image_path).convert('RGB')
-        image = transform(image)
-        pickle.dump(image, open(saved_image_path, 'wb'))
-        print(f"saving {saved_image_path}")
-    # image = Image.open(image_path).convert('RGB')
+    # if os.path.exists(saved_image_path):
+    #     image = pickle.load(open(saved_image_path, 'rb'))
+    # else:
+    #     image = Image.open(image_path).convert('RGB')
+    #     image = transform(image)
+    #     pickle.dump(image, open(saved_image_path, 'wb'))
+    #     print(f"saving {saved_image_path}")
+    # # image = Image.open(image_path).convert('RGB')
+    image = Image.open(image_path).convert('RGB')
+    image = transform(image)
     
     return image
 
