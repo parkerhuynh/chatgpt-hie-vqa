@@ -12,7 +12,7 @@ from torchvision import transforms
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW
 from datasets.randaugment import RandomAugment
 import random
-
+from collections import defaultdict
 contractions = {
     "aint": "ain't", "arent": "aren't", "cant": "can't", "couldve":
     "could've", "couldnt": "couldn't", "couldn'tve": "couldn't've",
@@ -240,7 +240,9 @@ class VQADataset(Dataset):
                     print(f"    - {self.split} : Loaded vqa answer vocabulary")
             else:
                 if "hie" in args.model_name.lower():
+                    self.create_hie_ann_vocal = self.create_probability_hie_ann_vocal if args.layer_name == "probability" else self.create_onehot_hie_ann_vocal
                     self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map  = self.create_hie_ann_vocal()
+                    
                     json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map], open(self.args.answer_dict, 'w'))
                 else:
                     self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map = self.create_normal_ann_vocal()
@@ -441,7 +443,7 @@ class VQADataset(Dataset):
 
         return ans2tok, tok2ans, {}
     
-    def create_hie_ann_vocal(self):
+    def create_onehot_hie_ann_vocal(self):
         path_files = self.args.stat_ques_list
         stat_ques_list = []
         for path_file in path_files:
@@ -505,6 +507,76 @@ class VQADataset(Dataset):
                     question_type_map[ans_id].append(question_type_id)
             
         return ans2tok, tok2ans, question_type_map
+    
+    
+    def create_probability_hie_ann_vocal(self):
+        path_files = self.args.stat_ques_list
+        stat_ques_list = []
+        for path_file in path_files:
+            with open(path_file, 'r') as file:
+                single_questions = json.load(file)["questions"]
+            stat_ques_list += single_questions
+        question_list = {}
+        for ques in stat_ques_list:
+            question_list[ques["id"]] = ques["question"]
+
+        examples = []
+        path_files = self.args.stat_ann_list
+        
+        for path_file in path_files:
+            with open(path_file, 'r') as file:
+                single_anns = json.load(file)["annotations"]
+            examples += single_anns
+        ans2tok, tok2ans = {}, {}
+        ans_freq_dict = {}
+        
+        processed_examples = []
+        for ann in examples:
+            ans_count = 0
+            for judge in ann["judgements"].values():
+                if judge["answer"] == 1:
+                    ans_count += 1
+            if ans_count >= 2:
+                ann["answer"] = prep_ans(ann["answer"])
+                processed_examples.append(ann)
+        examples = processed_examples
+        
+        for ans in examples:
+            ans_proc = prep_ans(ans['answer'])
+            if ans_proc not in ans_freq_dict:
+                ans_freq_dict[ans_proc] = 1
+            else:
+                ans_freq_dict[ans_proc] += 1
+        ans_freq_filter = ans_freq_dict.copy()
+        most_frequent_words = dict(sorted(ans_freq_dict.items(), key=lambda item: item[1], reverse=True)[:1000])
+        ans_freq_filter = most_frequent_words
+        for ans in ans_freq_filter:
+            tok2ans[tok2ans.__len__()] = ans
+            ans2tok[ans] = ans2tok.__len__()
+        
+        answer_question_type_counts = defaultdict(lambda: defaultdict(int))
+        total_answer_counts = defaultdict(int)
+        for example in examples:
+            answer_str = example["answer"]
+            ans_proc = prep_ans(answer_str)
+            if ans_proc in ans2tok:
+                ans_id = ans2tok[ans_proc]
+                total_answer_counts[ans_id] += 1  # Total appearances of each answer
+                
+                question_str = question_list[example["id"]]
+                question_type_str = self.question_type_dict[question_str]
+                question_type_id = self.question_type_to_idx[question_type_str]
+                # Count appearances of each answer across different question types
+                answer_question_type_counts[ans_id][question_type_id] += 1
+        answer_percentages = defaultdict(dict)
+
+        for ans_id, question_type_counts in answer_question_type_counts.items():
+            total_appearances = total_answer_counts[ans_id]
+            for question_type_id, count in question_type_counts.items():
+                percentage = (count / total_appearances)
+                answer_percentages[ans_id][question_type_id] = percentage
+        print(answer_percentages)
+        return ans2tok, tok2ans, answer_percentages
     
     def load_question_type(self):
         question_type_dict = {}

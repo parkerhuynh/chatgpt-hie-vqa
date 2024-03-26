@@ -160,7 +160,6 @@ class VQADataset(Dataset):
         self.args = args
         self.split = split
         self.image_path = getattr(args, f"{split}_image_path")
-        
         normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
         if split == "train":
             # self.transform = transforms.Compose([
@@ -237,6 +236,7 @@ class VQADataset(Dataset):
                     print(f"    - {self.split} : Loaded vqa answer vocabulary")
             else:
                 if "hie" in args.model_name.lower():
+                    self.create_hie_ann_vocal = self.create_probability_hie_ann_vocal if args.layer_name == "probability" else self.create_onehot_hie_ann_vocal
                     self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map  = self.create_hie_ann_vocal()
                     json.dump([self.vqa_ans_to_idx, self.idx_to_vqa_ans, self.question_type_map], open(self.args.answer_dict, 'w'))
                 else:
@@ -304,7 +304,6 @@ class VQADataset(Dataset):
         question_path = getattr(self.args, f"{self.split}_question")
         with open(question_path, 'r') as file:
             questions = json.load(file)
-        
         if self.split in  ["train", "val"]:
             processed_questions = {}
             for question in questions:
@@ -332,8 +331,6 @@ class VQADataset(Dataset):
                     question['bert_input_ids'] = encoding['input_ids'].flatten() 
                     question['bert_attention_mask'] = encoding['attention_mask'].flatten()
                 processed_questions[question["question_id"]] = question
-
-                
         else:
             processed_questions = []
             for question in questions:
@@ -375,22 +372,18 @@ class VQADataset(Dataset):
         return token_to_ix, pretrained_emb
     
     def load_annotations(self):
-        if os.path.exists(f"./datasets/proccessed_annotations_{self.args.dataset}_{self.split}.pkl"):
-            processed_annotation = pickle.load(open(f"./datasets/proccessed_annotations_{self.args.dataset}_{self.split}.pkl", 'rb'))
-        else:
-            annotation_path = getattr(self.args, f"{self.split}_annotation")
-            with open(annotation_path, 'r') as file:
-                annotation_list = json.load(file)
-            processed_annotation = []
-            for ans in annotation_list:
-                ans_proc = prep_ans(ans['multiple_choice_answer'])
-                if ans_proc in list(self.vqa_ans_to_idx.keys()):
-                    ans_iter, answer_str = proc_ans(ans, self.vqa_ans_to_idx)
-                    ans['vqa_answer_str'] =  answer_str,
-                    ans['vqa_answer_label']= ans_iter
+        annotation_path = getattr(self.args, f"{self.split}_annotation")
+        with open(annotation_path, 'r') as file:
+            annotation_list = json.load(file)
+        processed_annotation = []
+        for ans in annotation_list:
+            ans_proc = prep_ans(ans['multiple_choice_answer'])
+            if ans_proc in list(self.vqa_ans_to_idx.keys()):
+                ans_iter, answer_str = proc_ans(ans, self.vqa_ans_to_idx)
+                ans['vqa_answer_str'] =  answer_str,
+                ans['vqa_answer_label']= ans_iter
 
-                    processed_annotation.append(ans)
-            pickle.dump(processed_annotation, open(f"./datasets/proccessed_annotations_{self.args.dataset}_{self.split}.pkl", 'wb'))
+                processed_annotation.append(ans)
         return processed_annotation
     
     def create_normal_ann_vocal(self):
@@ -420,7 +413,7 @@ class VQADataset(Dataset):
 
         return ans2tok, tok2ans, {}
     
-    def create_hie_ann_vocal(self):
+    def create_probability_hie_ann_vocal(self):
         path_files = self.args.stat_ques_list
         stat_ques_list = []
         for path_file in path_files:
@@ -438,12 +431,8 @@ class VQADataset(Dataset):
             with open(path_file, 'r') as file:
                 single_anns = json.load(file)
             examples += single_anns
-        
-            
         ans2tok, tok2ans = {}, {}
-        
         ans_freq_dict = {}
-        
         for ans in examples:
             ans_proc = prep_ans(ans['multiple_choice_answer'])
             if ans_proc not in ans_freq_dict:
@@ -451,17 +440,14 @@ class VQADataset(Dataset):
             else:
                 ans_freq_dict[ans_proc] += 1
         ans_freq_filter = ans_freq_dict.copy()
-        
         most_frequent_words = dict(sorted(ans_freq_dict.items(), key=lambda item: item[1], reverse=True)[:1000])
         ans_freq_filter = most_frequent_words
-        
         for ans in ans_freq_filter:
             tok2ans[tok2ans.__len__()] = ans
             ans2tok[ans] = ans2tok.__len__()
         
         answer_question_type_counts = defaultdict(lambda: defaultdict(int))
         total_answer_counts = defaultdict(int)
-
         for example in examples:
             unique_answers = {answer['answer'] for answer in example['answers']}
             for answer_str in unique_answers:
@@ -473,10 +459,8 @@ class VQADataset(Dataset):
                     question_str = question_list[example["question_id"]]
                     question_type_str = self.question_type_dict[question_str]
                     question_type_id = self.question_type_to_idx[question_type_str]
-                    
                     # Count appearances of each answer across different question types
                     answer_question_type_counts[ans_id][question_type_id] += 1
-                    
         answer_percentages = defaultdict(dict)
 
         for ans_id, question_type_counts in answer_question_type_counts.items():
@@ -484,8 +468,56 @@ class VQADataset(Dataset):
             for question_type_id, count in question_type_counts.items():
                 percentage = (count / total_appearances)
                 answer_percentages[ans_id][question_type_id] = percentage
- 
         return ans2tok, tok2ans, answer_percentages
+    
+    def create_onehot_hie_ann_vocal(self):
+        path_files = self.args.stat_ques_list
+        stat_ques_list = []
+        for path_file in path_files:
+            with open(path_file, 'r') as file:
+                single_questions = json.load(file)
+            stat_ques_list += single_questions
+        question_list = {}
+        for ques in stat_ques_list:
+            question_list[ques["question_id"]] = ques["question"]
+
+        examples = []
+        path_files = self.args.stat_ann_list
+        
+        for path_file in path_files:
+            with open(path_file, 'r') as file:
+                single_anns = json.load(file)
+            examples += single_anns
+        ans2tok, tok2ans = {}, {}
+        ans_freq_dict = {}
+        for ans in examples:
+            ans_proc = prep_ans(ans['multiple_choice_answer'])
+            if ans_proc not in ans_freq_dict:
+                ans_freq_dict[ans_proc] = 1
+            else:
+                ans_freq_dict[ans_proc] += 1
+        ans_freq_filter = ans_freq_dict.copy()
+        most_frequent_words = dict(sorted(ans_freq_dict.items(), key=lambda item: item[1], reverse=True)[:1000])
+        ans_freq_filter = most_frequent_words
+        
+        for ans in ans_freq_filter:
+            tok2ans[tok2ans.__len__()] = ans
+            ans2tok[ans] = ans2tok.__len__()
+        question_type_map = {}
+        for ans in examples:
+            unique_answers = {answer['answer'] for answer in ans['answers']}
+            for answer_str in unique_answers:
+                ans_proc = prep_ans(answer_str)
+                if ans_proc in list(ans2tok.keys()):
+                    ans_id = ans2tok[ans_proc]
+                    quetion_str = question_list[ans["question_id"]]
+                    question_type_str  = self.question_type_dict[quetion_str]
+                    question_type_id = self.question_type_to_idx[question_type_str]
+                    if ans_id not in question_type_map:
+                        question_type_map[ans_id] = []
+                    if question_type_id not in question_type_map[ans_id]:
+                        question_type_map[ans_id].append(question_type_id)
+        return ans2tok, tok2ans, question_type_map
     
     
     def load_question_type(self):

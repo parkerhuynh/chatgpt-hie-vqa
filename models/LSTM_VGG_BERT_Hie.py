@@ -1,11 +1,12 @@
 import torch
-import torch.utils.data as data
 import torchvision.transforms as transforms
 import torch.nn as nn
 import torchvision.models as models
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW
-import torch.nn.functional as F
-    
+from models.onehot_layer import OneHotLayer
+from models.probability_layer import ProbabilityLayer
+
+
 class ImageEncoder(nn.Module):
 
     def __init__(self, output_size=1024):
@@ -52,49 +53,6 @@ class QuestionType(nn.Module):
         logits = output.logits
         return logits
     
-
-class CustomLayer(nn.Module):
-    def __init__(self, question_type_map_dict, ans_vocab_size, question_type_output_di):
-        super(CustomLayer, self).__init__()
-        print(question_type_map_dict)
-        unique_question_types = set()
-        for ans_id, q_types in question_type_map_dict.items():
-            unique_question_types.update(q_types.keys())
-
-        # Convert to list if necessary and sort (optional but helps in consistent indexing)
-        question_type_ids = sorted(list(unique_question_types))
-        answer_ids = sorted(list(question_type_map_dict.keys()))
-        
-        m = len(question_type_ids)  # Number of question types
-        n = len(answer_ids)
-        QuestionTypeMatrix = torch.zeros((m, n), dtype=torch.float32)
-        
-        question_type_to_index = {q_id: idx for idx, q_id in enumerate(question_type_ids)}
-        answer_to_index = {a_id: idx for idx, a_id in enumerate(answer_ids)}
-
-        # Populate the matrix
-        for ans_id, q_type_percents in question_type_map_dict.items():
-            ans_index = answer_to_index[ans_id]
-            for q_type_id, percent in q_type_percents.items():
-                if q_type_id in question_type_to_index:  # Ensure the question type is in our matrix
-                    q_type_index = question_type_to_index[q_type_id]
-                    QuestionTypeMatrix[q_type_index, ans_index] = percent
-        
-        self.register_buffer('QuestionTypeMatrix', QuestionTypeMatrix)
-        
-    def forward(self, question_type_output, vqa_output):
-        question_type_output = F.softmax(question_type_output, dim=-1)
-        current_device = question_type_output.device
-        bz, _ = question_type_output.size()
-        question_type_matrix = self.QuestionTypeMatrix.to(current_device).unsqueeze(0).expand(bz, -1, -1)
-        
-        question_type_output = question_type_output.unsqueeze(1)
-        question_type_output = torch.bmm(question_type_output, question_type_matrix).squeeze(1)
-        output = question_type_output*vqa_output
-        return output
-    
-    
-    
 class LSTM_VGG_BERT_Hie(nn.Module):
 
     def __init__(self, args, question_vocab_size, ans_vocab_size, question_type_map, question_type_output_dim):
@@ -110,8 +68,6 @@ class LSTM_VGG_BERT_Hie(nn.Module):
             word_embedding_size = args.word_embedding,
             hidden_size = args.rnn_hidden_size
             )
-        
-        
         self.QuestionType = QuestionType(question_type_output_dim)
         
         self.mlp_1 = nn.Sequential(
@@ -120,13 +76,19 @@ class LSTM_VGG_BERT_Hie(nn.Module):
                 nn.ReLU(),
                 nn.Linear(1000, ans_vocab_size))
         
-        self.CustomLayer = CustomLayer(question_type_map, ans_vocab_size, question_type_output_dim)
-        
-        self.mlp_2 = nn.Sequential(
+        if args.layer_name == "onehot":
+            print("onehot")
+            self.CustomLayer = OneHotLayer(question_type_map, ans_vocab_size, question_type_output_dim)
+        else:
+            print("probability")
+            self.CustomLayer = ProbabilityLayer(question_type_map, ans_vocab_size, question_type_output_dim)
+        if args.architecture == 1:
+            self.mlp_2 = nn.Sequential(
                 nn.Linear(ans_vocab_size, 1000),
                 nn.Dropout(p=0.5, inplace=True),
                 nn.ReLU(),
-                nn.Linear(1000, ans_vocab_size))
+                nn.Linear(1000, ans_vocab_size)
+            )
         
     def forward(self, image, question_rnn, question_bert, bert_attend_mask_questions):
         image = self.image_encoder(image)
@@ -137,7 +99,6 @@ class LSTM_VGG_BERT_Hie(nn.Module):
         
         question_type_output = self.QuestionType(question_bert, bert_attend_mask_questions)
         vqa_output = self.CustomLayer(question_type_output, vqa_output)
-        vqa_output = self.mlp_2(vqa_output)
-        # output = torch.sigmoid(output)
+        if self.args.architecture == 1:
+            vqa_output = self.mlp_2(vqa_output)
         return vqa_output, question_type_output
-        # return question_type_output
