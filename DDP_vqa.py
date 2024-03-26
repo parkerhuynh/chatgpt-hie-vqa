@@ -47,7 +47,7 @@ def main(args):
     rank = dist.get_rank()
     if args.wandb:
         wandb.init(
-            project="debug",
+            project="VQA new",
             group= args.wandb_group_name,
             name= f"rank-{rank}d",
             config=vars(args))
