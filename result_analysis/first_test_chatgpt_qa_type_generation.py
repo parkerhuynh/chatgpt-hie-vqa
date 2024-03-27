@@ -45,7 +45,7 @@ def main():
                         "answer": answer_str,
                         "question_answer_type":chatgpt_question_type}
 
-                file_name = "new_1.json"
+                file_name = "new_4.json"
                 with open(file_name, 'a') as json_file:
                     json.dump(data, json_file)
                     json_file.write('\n')
